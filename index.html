@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#163a35">
+  <meta name="description" content="《信号与系统》修订版 · 分章分节学习台">
+  <title>信号与系统 · 学习台</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/styles.css">
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem("signals-theme");
+        var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        document.documentElement.dataset.theme = saved || (dark ? "dark" : "light");
+      } catch (error) {
+        document.documentElement.dataset.theme = "light";
+      }
+    })();
+  </script>
+</head>
+<body>
+  <svg class="svg-sprite" aria-hidden="true">
+    <symbol id="icon-menu" viewBox="0 0 24 24">
+      <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="icon-search" viewBox="0 0 24 24">
+      <circle cx="11" cy="11" r="6.4" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <path d="m16 16 4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="icon-sun" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.7"/>
+      <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="icon-moon" viewBox="0 0 24 24">
+      <path d="M20 15.4A8.5 8.5 0 0 1 8.6 4 8.5 8.5 0 1 0 20 15.4Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="icon-settings" viewBox="0 0 24 24">
+      <path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z" fill="none" stroke="currentColor" stroke-width="1.7"/>
+      <path d="M19 13.3c.1-.4.1-.9 0-1.3l2-1.5-2-3.4-2.4 1a8 8 0 0 0-1.1-.6L15.2 5h-3.9l-.4 2.5c-.4.2-.7.4-1.1.6l-2.4-1-2 3.4L7.5 12c-.1.4-.1.9 0 1.3l-2 1.5 2 3.4 2.4-1c.3.3.7.5 1.1.6l.4 2.5h3.9l.4-2.5c.4-.2.7-.4 1.1-.6l2.4 1 2-3.4-2.2-1.5Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="icon-bookmark" viewBox="0 0 24 24">
+      <path d="M6 4.5h12v16l-6-4-6 4v-16Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24">
+      <path d="m5 12.5 4.2 4.2L19 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="icon-arrow" viewBox="0 0 24 24">
+      <path d="M5 12h14M14 7l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="icon-chevron" viewBox="0 0 24 24">
+      <path d="m8 10 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="icon-note" viewBox="0 0 24 24">
+      <path d="M5 4.5h14v15H5v-15Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M8.5 9h7M8.5 12.5h7M8.5 16h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="icon-copy" viewBox="0 0 24 24">
+      <rect x="8" y="8" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/>
+      <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="icon-pdf" viewBox="0 0 24 24">
+      <path d="M6 3.5h8l4 4v13H6v-17Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M14 3.5v4h4M8.5 16.5h7M8.5 12.5h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="icon-expand" viewBox="0 0 24 24">
+      <path d="M9 4H4v5M15 4h5v5M9 20H4v-5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="icon-plus" viewBox="0 0 24 24">
+      <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="icon-minus" viewBox="0 0 24 24">
+      <path d="M5 12h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="icon-close" viewBox="0 0 24 24">
+      <path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="icon-reset" viewBox="0 0 24 24">
+      <path d="M5 8.5A8 8 0 1 1 4.6 15M5 4.5v4h4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="icon-download" viewBox="0 0 24 24">
+      <path d="M12 3.5v11M7.5 10 12 14.5l4.5-4.5M5 19.5h14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="icon-upload" viewBox="0 0 24 24">
+      <path d="M12 20.5v-11M7.5 14 12 9.5l4.5 4.5M5 4.5h14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="icon-spark" viewBox="0 0 24 24">
+      <path d="m12 2 1.7 6.3L20 10l-6.3 1.7L12 18l-1.7-6.3L4 10l6.3-1.7L12 2Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="icon-target" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <circle cx="12" cy="12" r="1.2" fill="currentColor"/>
+    </symbol>
+    <symbol id="icon-clock" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="8.3" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <path d="M12 7.5V12l3.2 2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+    </symbol>
+  </svg>
+
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="章节目录">
+      <a class="brand" href="#/overview" aria-label="返回学习总览">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 42 42"><path d="M2 23c4.5 0 4.5-12 9-12s4.5 20 9 20 4.5-17 9-17 4.5 10 11 10"/></svg>
+        </span>
+        <span>
+          <strong>信号与系统</strong>
+          <small>SIGNALS &amp; SYSTEMS</small>
+        </span>
+      </a>
+
+      <div class="sidebar-progress">
+        <div class="progress-ring" id="totalRing" style="--progress: 0">
+          <span id="totalPercent">0<small>%</small></span>
+        </div>
+        <div>
+          <span class="eyebrow">总学习进度</span>
+          <strong id="totalProgressText">0 / 148 小节</strong>
+          <span class="muted" id="masteredText">已掌握 0 节</span>
+        </div>
+      </div>
+
+      <div class="sidebar-label">
+        <span>章节导航</span>
+        <span id="chapterCount">8 章</span>
+      </div>
+      <nav class="chapter-nav" id="chapterNav"></nav>
+
+      <div class="sidebar-foot">
+        <a class="side-action" href="#/formulas" data-nav-formulas>
+          <svg><use href="#icon-spark"></use></svg>
+          <span>公式速查卡</span>
+          <span class="side-count" data-formula-count>0</span>
+        </a>
+        <button class="side-action" type="button" data-open-settings>
+          <svg><use href="#icon-settings"></use></svg>
+          <span>学习数据与设置</span>
+        </button>
+        <a class="side-action" href="assets/book.pdf#page=1" target="_blank" rel="noreferrer">
+          <svg><use href="#icon-pdf"></use></svg>
+          <span>打开原版教材</span>
+        </a>
+        <p>依据《信号与系统（修订版）》目录与知识体系整理</p>
+      </div>
+    </aside>
+
+    <div class="sidebar-scrim" id="sidebarScrim" aria-hidden="true"></div>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="icon-button mobile-menu" id="menuButton" type="button" aria-label="打开章节导航" aria-expanded="false">
+          <svg><use href="#icon-menu"></use></svg>
+        </button>
+        <nav class="breadcrumb" id="breadcrumb" aria-label="面包屑"></nav>
+        <div class="top-actions">
+          <button class="search-trigger" id="searchTrigger" type="button">
+            <svg><use href="#icon-search"></use></svg>
+            <span>搜索知识、公式或小节</span>
+            <kbd>Ctrl K</kbd>
+          </button>
+          <a class="icon-button" href="#/formulas" aria-label="打开公式速查卡" title="公式速查卡" data-nav-formulas>
+            <svg><use href="#icon-spark"></use></svg>
+          </a>
+          <button class="icon-button" id="themeButton" type="button" aria-label="切换深浅色">
+            <svg class="theme-light"><use href="#icon-moon"></use></svg>
+            <svg class="theme-dark"><use href="#icon-sun"></use></svg>
+          </button>
+          <button class="icon-button" type="button" aria-label="打开学习数据与设置" data-open-settings>
+            <svg><use href="#icon-settings"></use></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="app-view" id="appView">
+        <div class="loading-view">
+          <div class="loading-wave"></div>
+          <p>正在整理知识图谱…</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div class="modal-layer" id="searchModal" role="dialog" aria-modal="true" aria-labelledby="searchTitle" hidden>
+    <div class="modal-backdrop" data-close-modal></div>
+    <section class="command-panel">
+      <h2 class="sr-only" id="searchTitle">搜索学习内容</h2>
+      <div class="command-input">
+        <svg><use href="#icon-search"></use></svg>
+        <input id="searchInput" type="search" placeholder="输入概念、公式或章节号，如「卷积」「3.7」「稳定性」" autocomplete="off">
+        <button class="icon-button" type="button" data-close-modal aria-label="关闭搜索">
+          <svg><use href="#icon-close"></use></svg>
+        </button>
+      </div>
+      <div class="command-hints" id="searchHints">
+        <span>试试：</span>
+        <button type="button" data-search-term="卷积">卷积</button>
+        <button type="button" data-search-term="傅里叶">傅里叶</button>
+        <button type="button" data-search-term="Z 变换">Z 变换</button>
+        <button type="button" data-search-term="稳定性">稳定性</button>
+      </div>
+      <div class="search-results" id="searchResults"></div>
+    </section>
+  </div>
+
+  <div class="modal-layer" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" hidden>
+    <div class="modal-backdrop" data-close-modal></div>
+    <section class="settings-panel">
+      <div class="modal-heading">
+        <div>
+          <span class="eyebrow">PREFERENCES &amp; DATA</span>
+          <h2 id="settingsTitle">学习数据与设置</h2>
+        </div>
+        <button class="icon-button" type="button" data-close-modal aria-label="关闭设置">
+          <svg><use href="#icon-close"></use></svg>
+        </button>
+      </div>
+      <div class="settings-block">
+        <h3>学习数据</h3>
+        <p>进度、书签与笔记仅保存在当前浏览器。换设备前可先导出备份。</p>
+        <div class="settings-actions">
+          <button class="button secondary" id="exportButton" type="button">
+            <svg><use href="#icon-download"></use></svg>导出备份
+          </button>
+          <label class="button secondary file-button">
+            <svg><use href="#icon-upload"></use></svg>导入备份
+            <input id="importInput" type="file" accept="application/json">
+          </label>
+          <button class="button danger-ghost" id="resetButton" type="button">
+            <svg><use href="#icon-reset"></use></svg>重置进度
+          </button>
+        </div>
+      </div>
+      <div class="settings-block">
+        <h3>快捷键</h3>
+        <div class="shortcut-list">
+          <div><kbd>Ctrl</kbd><kbd>K</kbd><span>搜索</span></div>
+          <div><kbd>/</kbd><span>搜索</span></div>
+          <div><kbd>Esc</kbd><span>关闭弹窗</span></div>
+          <div><kbd>T</kbd><span>切换主题</span></div>
+        </div>
+      </div>
+      <div class="settings-block about-block">
+        <h3>关于本学习台</h3>
+        <p>章节、小节与页码依据原书目录整理；知识要点为学习辅助摘要，完整推导与例题请查阅随附教材。</p>
+        <a class="text-link" href="assets/book.pdf#page=1" target="_blank" rel="noreferrer">
+          打开《信号与系统 修订版》<svg><use href="#icon-arrow"></use></svg>
+        </a>
+      </div>
+    </section>
+  </div>
+
+  <div class="toast-region" id="toastRegion" aria-live="polite"></div>
+
+  <script src="assets/data/ch1.js"></script>
+  <script src="assets/data/ch2.js"></script>
+  <script src="assets/data/ch3.js"></script>
+  <script src="assets/data/ch4.js"></script>
+  <script src="assets/data/ch5.js"></script>
+  <script src="assets/data/ch6.js"></script>
+  <script src="assets/data/ch7.js"></script>
+  <script src="assets/data/ch8.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>
