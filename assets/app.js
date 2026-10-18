@@ -1122,8 +1122,8 @@
             <button class="icon-button" type="button" data-mind-action="fullscreen" aria-label="全屏查看导图"><svg><use href="#icon-expand"></use></svg></button>
           </div>
         </div>
-        <div class="mindmap-scroll">${renderMindmapSvg(chapter)}</div>
-        <div class="mindmap-note">实线 = 章节结构；节点颜色与各章主题色一致。缩放后可在区域内滚动查看。</div>
+        <div class="mindmap-scroll" tabindex="0" aria-label="知识导图画布，可上下、左右滚动浏览">${renderMindmapSvg(chapter)}</div>
+        <div class="mindmap-note">滚轮或双指可上下左右浏览；桌面端也可拖动空白区域平移。点击节点跳转小节。</div>
       </article>`;
   }
 
@@ -1242,6 +1242,59 @@
         }
       });
     });
+    bindMindmapPanning(card);
+  }
+
+  function bindMindmapPanning(card) {
+    const scroll = $(".mindmap-scroll", card);
+    if (!scroll || scroll.dataset.panBound === "true") return;
+    scroll.dataset.panBound = "true";
+
+    let drag = null;
+    scroll.addEventListener("pointerdown", (event) => {
+      if (event.pointerType !== "mouse" || event.button !== 0) return;
+      if (!card.classList.contains("fullscreen")) return;
+      if (event.target.closest("[data-goto-section]")) return;
+      drag = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        startLeft: scroll.scrollLeft,
+        startTop: scroll.scrollTop,
+        moved: false
+      };
+      scroll.setPointerCapture(event.pointerId);
+    });
+
+    scroll.addEventListener("pointermove", (event) => {
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      const dx = event.clientX - drag.startX;
+      const dy = event.clientY - drag.startY;
+      if (!drag.moved && Math.hypot(dx, dy) > 3) {
+        drag.moved = true;
+        scroll.classList.add("is-panning");
+      }
+      if (!drag.moved) return;
+      scroll.scrollLeft = drag.startLeft - dx;
+      scroll.scrollTop = drag.startTop - dy;
+      event.preventDefault();
+    });
+
+    const finishDrag = (event) => {
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      if (scroll.hasPointerCapture(event.pointerId)) {
+        scroll.releasePointerCapture(event.pointerId);
+      }
+      scroll.classList.remove("is-panning");
+      drag = null;
+    };
+    scroll.addEventListener("pointerup", finishDrag);
+    scroll.addEventListener("pointercancel", finishDrag);
+    scroll.addEventListener("lostpointercapture", () => {
+      scroll.classList.remove("is-panning");
+      drag = null;
+    });
+    scroll.addEventListener("dragstart", (event) => event.preventDefault());
   }
 
   function goToSection(chapterId, sectionId) {
@@ -1439,11 +1492,19 @@
     const svg = $("svg[data-mindmap-svg]", card);
     if (action === "fullscreen") {
       card.classList.toggle("fullscreen");
-      document.body.classList.toggle("mindmap-open", card.classList.contains("fullscreen"));
-      if (card.classList.contains("fullscreen")) {
+      const isFullscreen = card.classList.contains("fullscreen");
+      document.body.classList.toggle("mindmap-open", isFullscreen);
+      const fullscreenButton = $('[data-mind-action="fullscreen"]', card);
+      if (fullscreenButton) {
+        fullscreenButton.setAttribute("aria-label", isFullscreen ? "退出导图全屏" : "全屏查看导图");
+        fullscreenButton.classList.toggle("active", isFullscreen);
+      }
+      if (isFullscreen) {
+        if (scroll) scroll.scrollTo({ top: 0, left: 0 });
         setTimeout(() => {
           const active = $("[data-mindmap-svg]");
           if (active) active.style.width = "";
+          if (scroll) scroll.focus({ preventScroll: true });
         }, 140);
       }
       return;
