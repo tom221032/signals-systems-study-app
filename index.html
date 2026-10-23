@@ -129,6 +129,16 @@
       <nav class="chapter-nav" id="chapterNav"></nav>
 
       <div class="sidebar-foot">
+        <a class="side-action" href="#/videos" data-nav-videos>
+          <svg><use href="#icon-clock"></use></svg>
+          <span>视频课程索引</span>
+          <span class="side-count" data-video-count>50</span>
+        </a>
+        <a class="side-action" href="#/questions" data-nav-questions>
+          <svg><use href="#icon-note"></use></svg>
+          <span>分类题目与解析</span>
+          <span class="side-count" data-question-count>0</span>
+        </a>
         <a class="side-action" href="#/formulas" data-nav-formulas>
           <svg><use href="#icon-spark"></use></svg>
           <span>公式速查卡</span>
@@ -155,6 +165,10 @@
         </button>
         <nav class="breadcrumb" id="breadcrumb" aria-label="面包屑"></nav>
         <div class="top-actions">
+          <div class="study-mode-switch" role="group" aria-label="学习模式">
+            <button type="button" data-study-mode="daily" aria-pressed="true">日学</button>
+            <button type="button" data-study-mode="final" aria-pressed="false">期末</button>
+          </div>
           <button class="search-trigger" id="searchTrigger" type="button">
             <svg><use href="#icon-search"></use></svg>
             <span>搜索知识、公式或小节</span>
@@ -261,6 +275,10 @@
   <script src="assets/data/ch6.js"></script>
   <script src="assets/data/ch7.js"></script>
   <script src="assets/data/ch8.js"></script>
-  <script src="assets/app.js"></script>
+  <script src="assets/data/daily-ch1.js?v=20261023h"></script>
+  <script src="assets/data/questions-ch1.js?v=20261023h"></script>
+  <script src="assets/data/video-index.js?v=20261023h"></script>
+  <script src="assets/data/expanded-questions.js?v=20261023h"></script>
+  <script src="assets/app.js?v=20261023h"></script>
 </body>
 </html>

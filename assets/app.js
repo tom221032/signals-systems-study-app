@@ -2,7 +2,21 @@
   "use strict";
 
   const chapters = window.SIGNAL_CHAPTERS || [];
+  const dailyContent = window.SIGNAL_DAILY_CONTENT || {};
+  const videoIndex = window.SIGNAL_VIDEO_INDEX || { episodes: [] };
+  const videoEpisodes = videoIndex.episodes || [];
+  const rawQuestions = [
+    ...(window.SIGNAL_QUESTION_BANK || []),
+    ...(window.SIGNAL_EXPANDED_QUESTIONS || [])
+  ];
+  const questionBank = rawQuestions.map((question) => {
+    const episodeIds = Array.isArray(question.episodeIds)
+      ? question.episodeIds
+      : (String(question.source || "").match(/视频第\s*(\d+)\s*集/) || []).slice(1).map(Number);
+    return { ...question, episodeIds };
+  });
   const STORAGE_KEY = "signals-study-progress-v1";
+  const MODE_STORAGE_KEY = "signals-study-mode-v1";
   const PDF_PAGE_OFFSET = 14;
   const $ = (selector, root) => (root || document).querySelector(selector);
   const $$ = (selector, root) => Array.from((root || document).querySelectorAll(selector));
@@ -18,6 +32,19 @@
   const sectionById = new Map(allSections.map((section) => [section.id, section]));
   const chapterById = new Map(chapters.map((chapter) => [chapter.id, chapter]));
   const totalSections = allSections.length;
+  questionBank.forEach((question) => {
+    const section = sectionById.get((question.sectionIds || [])[0]);
+    question.chapterId = section ? section.chapter.id : null;
+  });
+  const questionById = new Map(questionBank.map((question) => [question.id, question]));
+  const questionCategories = [...new Set(questionBank.map((question) => question.category))];
+  const videosBySection = new Map();
+  videoEpisodes.forEach((episode) => {
+    (episode.sectionIds || []).forEach((sectionId) => {
+      if (!videosBySection.has(sectionId)) videosBySection.set(sectionId, []);
+      videosBySection.get(sectionId).push(episode);
+    });
+  });
   const allFormulas = [];
   allSections.forEach((section) => {
     (section.formulas || []).forEach((formula, index) => {
@@ -34,6 +61,7 @@
   const formulaById = new Map(allFormulas.map((formula) => [formula.id, formula]));
 
   const ui = {
+    studyMode: loadStudyMode(),
     filter: "all",
     searchIndex: 0,
     searchResults: [],
@@ -44,8 +72,13 @@
     formulaQuery: "",
     formulaMode: "browse",
     formulaRecallId: null,
-    formulaRevealed: false
+    formulaRevealed: false,
+    questionCategory: "all",
+    questionChapter: "all",
+    questionQuery: "",
+    questionFocus: null
   };
+  document.documentElement.dataset.studyMode = ui.studyMode;
 
   const CHAPTER_GROUPS = {
     ch1: {
@@ -159,6 +192,22 @@
     const element = document.createElement("textarea");
     element.innerHTML = String(value == null ? "" : value);
     return element.value.replace(/\u00a0/g, " ").trim();
+  }
+
+  function loadStudyMode() {
+    try {
+      return localStorage.getItem(MODE_STORAGE_KEY) === "final" ? "final" : "daily";
+    } catch (error) {
+      return "daily";
+    }
+  }
+
+  function saveStudyMode(mode) {
+    try {
+      localStorage.setItem(MODE_STORAGE_KEY, mode);
+    } catch (error) {
+      // Mode persistence is optional.
+    }
   }
 
   function loadState() {
@@ -285,6 +334,23 @@
         sectionId: parts[2] && sectionById.has(parts[2]) ? parts[2] : null
       };
     }
+    if (parts[0] === "section" && chapterById.has(parts[1]) &&
+        parts[2] && sectionById.has(parts[2])) {
+      return {
+        view: "section",
+        chapterId: parts[1],
+        sectionId: parts[2]
+      };
+    }
+    if (parts[0] === "questions") {
+      return {
+        view: "questions",
+        questionId: parts[1] && questionById.has(parts[1]) ? parts[1] : null
+      };
+    }
+    if (parts[0] === "videos") {
+      return { view: "videos" };
+    }
     if (parts[0] === "formulas") {
       return { view: "formulas" };
     }
@@ -306,11 +372,34 @@
     if (fullscreenMap) fullscreenMap.classList.remove("fullscreen");
     document.body.classList.remove("mindmap-open");
     if (route.view === "chapter") {
-      renderChapter(route.chapterId, route.sectionId);
+      if (ui.studyMode === "daily") {
+        if (route.sectionId) {
+          navigate(`#/section/${route.chapterId}/${route.sectionId}`);
+          return;
+        }
+        renderDailyChapter(route.chapterId);
+      } else {
+        renderChapter(route.chapterId, route.sectionId);
+      }
       document.title = `第 ${chapterById.get(route.chapterId).num} 章 · ${chapterById.get(route.chapterId).title}`;
+    } else if (route.view === "section") {
+      if (ui.studyMode === "final") {
+        navigate(`#/chapter/${route.chapterId}/${route.sectionId}`);
+        return;
+      }
+      renderDailySection(route.chapterId, route.sectionId);
+      const chapter = chapterById.get(route.chapterId);
+      const section = sectionById.get(route.sectionId);
+      document.title = `${section.no} ${section.title} · 第 ${chapter.num} 章`;
     } else if (route.view === "formulas") {
       renderFormulas();
       document.title = "公式速查卡 · 信号与系统";
+    } else if (route.view === "questions") {
+      renderQuestionBank(route.questionId);
+      document.title = "分类题目与解析 · 信号与系统";
+    } else if (route.view === "videos") {
+      renderVideoIndex();
+      document.title = "视频课程索引 · 信号与系统";
     } else {
       renderOverview();
       document.title = "信号与系统 · 学习台";
@@ -342,14 +431,37 @@
     $$("[data-formula-count]").forEach((element) => {
       element.textContent = String(allFormulas.length);
     });
+    $$("[data-question-count]").forEach((element) => {
+      element.textContent = String(questionBank.length);
+    });
+    $$("[data-video-count]").forEach((element) => {
+      element.textContent = String(videoEpisodes.length);
+    });
   }
 
   function updateSidebarActive(route) {
     $$("[data-nav-chapter]").forEach((link) => {
-      link.classList.toggle("active", route.view === "chapter" && link.dataset.navChapter === route.chapterId);
+      link.classList.toggle("active",
+        (route.view === "chapter" || route.view === "section") &&
+        link.dataset.navChapter === route.chapterId);
     });
     $$("[data-nav-formulas]").forEach((link) => {
       link.classList.toggle("active", route.view === "formulas");
+    });
+    $$("[data-nav-questions]").forEach((link) => {
+      link.classList.toggle("active", route.view === "questions");
+    });
+    $$("[data-nav-videos]").forEach((link) => {
+      link.classList.toggle("active", route.view === "videos");
+    });
+    updateModeSwitch();
+  }
+
+  function updateModeSwitch() {
+    $$("[data-study-mode]").forEach((button) => {
+      const active = button.dataset.studyMode === ui.studyMode;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
     });
   }
 
@@ -394,17 +506,42 @@
         <a href="#/overview">学习总览</a>
         <span class="separator">/</span>
         <span class="current">第 ${chapter.num} 章 · ${escapeHtml(chapter.title)}</span>`;
+    } else if (route.view === "section") {
+      const chapter = chapterById.get(route.chapterId);
+      const section = sectionById.get(route.sectionId);
+      crumb.innerHTML = `
+        <a href="#/overview">学习总览</a>
+        <span class="separator">/</span>
+        <a href="#/chapter/${chapter.id}">第 ${chapter.num} 章</a>
+        <span class="separator">/</span>
+        <span class="current">${escapeHtml(section.no)} ${escapeHtml(section.title)}</span>`;
     } else if (route.view === "formulas") {
       crumb.innerHTML = `
         <a href="#/overview">学习总览</a>
         <span class="separator">/</span>
         <span class="current">公式速查卡</span>`;
+    } else if (route.view === "questions") {
+      crumb.innerHTML = `
+        <a href="#/overview">学习总览</a>
+        <span class="separator">/</span>
+        <span class="current">分类题目与解析</span>`;
+    } else if (route.view === "videos") {
+      crumb.innerHTML = `
+        <a href="#/overview">学习总览</a>
+        <span class="separator">/</span>
+        <span class="current">视频课程索引</span>`;
     } else {
       crumb.innerHTML = `
         <span class="current">学习总览</span>
         <span class="separator">/</span>
         <span>${chapters.length} 章 · ${totalSections} 个学习单元</span>`;
     }
+  }
+
+  function sectionHref(chapterId, sectionId) {
+    return ui.studyMode === "daily"
+      ? `#/section/${chapterId}/${sectionId}`
+      : `#/chapter/${chapterId}/${sectionId}`;
   }
 
   function renderOverview() {
@@ -445,9 +582,9 @@
         <div class="hero-copy">
           <span class="hero-kicker">SIGNALS &amp; SYSTEMS · STUDY WORKBENCH</span>
           <h1>把复杂系统，<br>拆成<em>可掌握的信号</em>。</h1>
-          <p>依据《信号与系统（修订版）》构建的八章学习台。按小节推进、用思维导图串起结构，让每一次学习都有清晰的进度与落点。</p>
+          <p>依据《信号与系统（修订版）》构建的八章学习台。日学模式逐节深读，期末模式压缩为要点与题目；两种模式可随时切换。</p>
           <div class="hero-actions">
-            <a class="button primary" href="#/chapter/${target.chapter.id}/${target.id}">
+            <a class="button primary" href="${sectionHref(target.chapter.id, target.id)}">
               继续学习
               <svg><use href="#icon-arrow"></use></svg>
             </a>
@@ -513,7 +650,7 @@
           <strong>${escapeHtml(target.no)} ${escapeHtml(target.title)}</strong>
           <p>${escapeHtml(targetChapter.title)} · 本章进度 ${pct(targetStats.progress)}% · ${statusLabel(target)}</p>
         </div>
-        <a class="button secondary" href="#/chapter/${targetChapter.id}/${target.id}">
+        <a class="button secondary" href="${sectionHref(targetChapter.id, target.id)}">
           进入小节
           <svg><use href="#icon-arrow"></use></svg>
         </a>
@@ -533,15 +670,21 @@
           <span class="eyebrow">TOOLS &amp; NEXT ITERATION</span>
           <h2>学习工具</h2>
         </div>
-        <p>公式速查已经上线；其余入口继续为后续扩展预留。</p>
+        <p>分类题库与公式速查均可直接使用；题目与日学小节共用同一份解析数据。</p>
       </div>
       <section class="feature-grid">
-        <button class="feature-card" type="button" data-feature="章节自测">
-          <span class="feature-badge">PLANNED</span>
+        <a class="feature-card feature-card-live" href="#/questions">
+          <span class="feature-badge">LIVE</span>
           <span class="feature-icon"><svg><use href="#icon-target"></use></svg></span>
-          <strong>章节自测</strong>
-          <p>按小节生成选择、判断与公式填空，自动记录薄弱点。</p>
-        </button>
+          <strong>分类题目与解析</strong>
+          <p>汇总 ${questionBank.length} 道代表性题，按知识类型独立分类，附步骤、技巧与易错点。</p>
+        </a>
+        <a class="feature-card feature-card-live" href="#/videos">
+          <span class="feature-badge">LIVE</span>
+          <span class="feature-icon"><svg><use href="#icon-clock"></use></svg></span>
+          <strong>视频课程索引</strong>
+          <p>50 集课堂视频按课程章节归档，关联教材小节和对应题目。</p>
+        </a>
         <button class="feature-card" type="button" data-feature="错题本">
           <span class="feature-badge">PLANNED</span>
           <span class="feature-icon"><svg><use href="#icon-note"></use></svg></span>
@@ -729,7 +872,7 @@
         <div class="formula-card-expression">${formula.expr}</div>
         ${formula.note ? `<p class="formula-card-note">${escapeHtml(formula.note)}</p>` : ""}
         <footer class="formula-card-footer">
-          <a href="#/chapter/${chapter.id}/${section.id}">
+          <a href="${sectionHref(chapter.id, section.id)}">
             <span>${escapeHtml(section.no)}</span>${escapeHtml(section.title)}
           </a>
           <a href="${sourceUrl(section)}" target="_blank" rel="noreferrer">p.${section.pages[0]}</a>
@@ -784,7 +927,7 @@
               换一张
               <svg><use href="#icon-arrow"></use></svg>
             </button>
-            <a class="button secondary" href="#/chapter/${chapter.id}/${section.id}">查看对应小节</a>
+            <a class="button secondary" href="${sectionHref(chapter.id, section.id)}">查看对应小节</a>
             <a class="recall-source" href="${sourceUrl(section)}" target="_blank" rel="noreferrer">
               <svg><use href="#icon-pdf"></use></svg>教材 p.${section.pages[0]}
             </a>
@@ -881,6 +1024,511 @@
     const copied = document.execCommand("copy");
     textarea.remove();
     if (!copied) throw new Error("Copy command failed");
+  }
+
+  function getDailyContent(section) {
+    const chapterId = section.chapter
+      ? section.chapter.id
+      : (chapters.find((chapter) => chapter.sections.includes(section)) || {}).id;
+    return chapterId && dailyContent[chapterId] &&
+      dailyContent[chapterId][section.id]
+      ? dailyContent[chapterId][section.id]
+      : null;
+  }
+
+  function getSectionVideoRefs(sectionId) {
+    return videosBySection.get(sectionId) || [];
+  }
+
+  function renderVideoRefs(sectionId) {
+    const refs = getSectionVideoRefs(sectionId);
+    if (!refs.length) {
+      return `<div class="video-reference-empty"><strong>本章暂无对应视频</strong><span>内容按教材深挖整理。</span></div>`;
+    }
+    return refs.map((episode) => `
+      <a class="video-reference-card" href="${episode.url}" target="_blank" rel="noreferrer">
+        <span class="video-episode-no">第 ${episode.episode} 集</span>
+        <strong>${escapeHtml(episode.title)}</strong>
+        <small>${formatDuration(episode.duration)} · 打开 Bilibili 对应视频</small>
+        ${episode.legacy ? '<span class="video-legacy">旧课</span>' : ""}
+      </a>`).join("");
+  }
+
+  function formatDuration(seconds) {
+    const total = Math.max(0, Number(seconds) || 0);
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const secs = Math.floor(total % 60);
+    return hours
+      ? `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`
+      : `${minutes}:${String(secs).padStart(2, "0")}`;
+  }
+
+  function getSectionQuestions(sectionId) {
+    return questionBank.filter((question) => question.sectionIds.includes(sectionId));
+  }
+
+  function renderFallbackDailyContent(section) {
+    const formulaHtml = (section.formulas || []).map((formula) => `
+      <div class="formula-item">
+        <span class="formula-label">${escapeHtml(formula.label)}</span>
+        <span class="formula">${formula.expr}</span>
+        ${formula.note ? `<span class="formula-note">${escapeHtml(formula.note)}</span>` : ""}
+      </div>`).join("");
+    return {
+      concept: `
+        <p><mark>${section.summary}</mark></p>
+        <p>${section.chapter.overview}</p>
+        <p>本节要解决的具体问题：${section.check}</p>`,
+      advanced: [{
+        title: "定义、公式与适用条件",
+        html: `<ul>${(section.points || []).map((point) => `<li>${point}</li>`).join("")}</ul>
+          <div class="formula-list">${formulaHtml || '<span class="muted">本节以概念理解为主。</span>'}</div>`
+      }],
+      summary: `
+        <p><mark>核心结论：</mark>${section.summary}</p>
+        <p><mark>自检问题：</mark>${escapeHtml(section.check)}</p>
+        <p><span class="hl-red">易错点：</span>${escapeHtml(section.pitfall)}</p>`,
+      questionIds: getSectionQuestions(section.id).map((question) => question.id)
+    };
+  }
+
+  function renderQuestionDetails(question, options) {
+    const config = Object.assign({ open: true, compact: false }, options || {});
+    const sectionLinks = question.sectionIds
+      .map((sectionId) => sectionById.get(sectionId))
+      .filter(Boolean)
+      .map((section) => `<a href="${sectionHref(section.chapter.id, section.id)}">${escapeHtml(section.no)} ${escapeHtml(section.title)}</a>`)
+      .join("");
+    return `
+      <details class="question-detail-card ${config.compact ? "compact" : ""}" id="question-${question.id}" ${config.open ? "open" : ""}>
+        <summary>
+          <span class="question-category">${escapeHtml(question.category)}</span>
+          <strong>${escapeHtml(question.title)}</strong>
+          <span class="question-difficulty">${escapeHtml(question.difficulty)}</span>
+        </summary>
+        <div class="question-detail-body">
+          <div class="question-meta">
+            <span>${escapeHtml(question.source)}</span>
+            <div class="question-section-links">${sectionLinks}</div>
+          </div>
+          <section class="question-block">
+            <h4>题目</h4>
+            ${question.prompt}
+          </section>
+          <section class="question-block">
+            <h4>分析</h4>
+            ${question.analysis}
+          </section>
+          <section class="question-block">
+            <h4>详细步骤</h4>
+            <ol>${question.steps.map((step) => `<li>${step}</li>`).join("")}</ol>
+          </section>
+          <div class="question-answer">
+            <h4>结论</h4>
+            ${question.answer}
+          </div>
+          <section class="question-technique">
+            <h4>解题技巧</h4>
+            ${question.technique}
+          </section>
+          <section class="question-pitfalls">
+            <h4>红色易错点</h4>
+            <ul>${question.pitfalls.map((pitfall) => `<li><span class="hl-red">${escapeHtml(pitfall)}</span></li>`).join("")}</ul>
+          </section>
+        </div>
+      </details>`;
+  }
+
+  function renderDailyChapter(chapterId) {
+    const chapter = chapterById.get(chapterId);
+    if (!chapter) {
+      navigate("#/overview");
+      return;
+    }
+    renderBreadcrumb({ view: "chapter", chapterId });
+    const stats = chapterStats(chapter);
+    const enhancedCount = chapter.sections.filter((section) =>
+      getDailyContent(section) ||
+      getSectionVideoRefs(section.id).length ||
+      getSectionQuestions(section.id).length
+    ).length;
+    const chapterTarget = chapter.sections.find((section) => !isMastered(section)) ||
+      chapter.sections.find((section) => !isRead(section)) ||
+      chapter.sections[0];
+    const groups = buildGroups(chapter).map((group) => `
+      <section class="daily-section-group">
+        <div class="daily-group-heading">
+          <span>${escapeHtml(group.key)}</span>
+          <h3>${escapeHtml(group.label)}</h3>
+        </div>
+        <div class="daily-section-grid">
+          ${group.sections.map((section) => {
+            const videoRefs = getSectionVideoRefs(section.id);
+            const deep = Boolean(getDailyContent(section)) || videoRefs.length ||
+              getSectionQuestions(section.id).length > 0;
+            const progress = sectionProgress(section);
+            const questionCount = getSectionQuestions(section.id).length;
+            return `
+              <a class="daily-section-card" href="${sectionHref(chapter.id, section.id)}"
+                style="--section-accent:${chapter.accent}">
+                <span class="daily-section-code">${escapeHtml(section.no)}</span>
+                <span class="daily-section-copy">
+                  <strong>${escapeHtml(section.title)}</strong>
+                  <small>${section.summary}</small>
+                </span>
+                <span class="daily-section-meta">
+                  <span class="status-pill ${statusClass(section)}">${statusLabel(section)}</span>
+                  ${videoRefs.length
+                    ? '<span class="content-depth deep">视频+教材</span>'
+                    : deep
+                      ? '<span class="content-depth deep">教材深挖</span>'
+                      : '<span class="content-depth">教材提炼</span>'}
+                  ${questionCount ? `<span class="question-count">${questionCount} 题</span>` : ""}
+                </span>
+                <span class="daily-card-progress"><i style="width:${pct(progress)}%"></i></span>
+              </a>`;
+          }).join("")}
+        </div>
+      </section>`).join("");
+    $("#appView").innerHTML = `
+      <section class="chapter-hero daily-chapter-hero" style="--chapter-accent:${chapter.accent}">
+        <div class="chapter-hero-grid">
+          <div>
+            <div class="chapter-title-row">
+              <span class="chapter-number">${chapter.num}</span>
+              <div>
+                <span class="chapter-tag">DAILY STUDY · 逐节深读</span>
+                <h1>${escapeHtml(chapter.title)}</h1>
+                <p class="chapter-overview">${escapeHtml(chapter.overview)}</p>
+              </div>
+            </div>
+            <div class="chapter-meta">
+              <span>${stats.total} 个独立小节</span>
+              <span>${enhancedCount} 节深度整理</span>
+              <span>${questionBank.filter((question) => question.sectionIds.some((id) => sectionById.get(id)?.chapter.id === chapter.id)).length} 道例题</span>
+            </div>
+          </div>
+          <aside class="chapter-progress-panel">
+            <div class="chapter-progress-head">
+              <strong>${pct(stats.progress)}%</strong>
+              <span>CHAPTER PROGRESS</span>
+            </div>
+            <div class="progress-track"><i style="width:${pct(stats.progress)}%;background:${chapter.accent}"></i></div>
+            <p class="daily-mode-note">日学模式取消章内折叠卡片，每个小节独占一个学习页面。</p>
+            <div class="chapter-actions">
+              <a class="button secondary" href="${sectionHref(chapter.id, chapterTarget.id)}">
+                继续本章<svg><use href="#icon-arrow"></use></svg>
+              </a>
+              <a class="button secondary" href="#/questions">
+                <svg><use href="#icon-note"></use></svg>分类题库
+              </a>
+            </div>
+          </aside>
+        </div>
+      </section>
+      <div class="section-heading daily-directory-heading">
+        <div>
+          <span class="eyebrow">SECTION DIRECTORY</span>
+          <h2>选择一个小节</h2>
+        </div>
+        <p>点击卡片进入独立页面。深度讲解按“概念入门→进阶知识→要点总结→题目应用”展开。</p>
+      </div>
+      ${groups}`;
+  }
+
+  function renderDailySection(chapterId, sectionId) {
+    const chapter = chapterById.get(chapterId);
+    const section = sectionById.get(sectionId);
+    if (!chapter || !section) {
+      navigate("#/overview");
+      return;
+    }
+    renderBreadcrumb({ view: "section", chapterId, sectionId });
+    state.lastSection = section.id;
+    saveState();
+    const content = getDailyContent(section) || renderFallbackDailyContent(section);
+    const videoRefs = getSectionVideoRefs(section.id);
+    const sourceLabel = getDailyContent(section)
+      ? "视频+教材深度整理"
+      : videoRefs.length
+        ? "视频主题+教材深挖"
+        : chapter.id === "ch6"
+          ? "教材深挖（无对应视频）"
+          : "教材提炼版";
+    const questions = (content.questionIds || [])
+      .map((id) => questionById.get(id))
+      .filter(Boolean);
+    const note = state.notes[section.id] || "";
+    const index = chapter.sections.findIndex((item) => item.id === section.id);
+    const prev = chapter.sections[index - 1];
+    const next = chapter.sections[index + 1];
+    const advanced = (content.advanced || []).map((item, idx) => `
+      <article class="daily-advanced-card">
+        <span class="daily-step-index">${String(idx + 1).padStart(2, "0")}</span>
+        <div>
+          <h3>${escapeHtml(item.title)}</h3>
+          ${item.html}
+        </div>
+      </article>`).join("");
+    $("#appView").innerHTML = `
+      <article class="daily-section-page" id="section-${section.id}" data-section-card="${section.id}" style="--section-accent:${chapter.accent}">
+        <header class="daily-section-hero">
+          <div>
+            <a class="daily-back-link" href="#/chapter/${chapter.id}">← 返回${chapter.num}章目录</a>
+            <span class="daily-section-kicker">${escapeHtml(chapter.num)} · ${escapeHtml(section.no)} · ${escapeHtml(chapter.title)}</span>
+            <h1>${escapeHtml(section.title)}</h1>
+            <p>${section.summary}</p>
+            <div class="chapter-meta">
+              <span>教材 p.${section.pages[0]}${section.pages[1] !== section.pages[0] ? `–${section.pages[1]}` : ""}</span>
+              <span>${sourceLabel}</span>
+              <span class="status-pill ${statusClass(section)}" data-role="status">${statusLabel(section)}</span>
+            </div>
+          </div>
+          <div class="section-action-stack">
+            <div class="section-progress">
+              <div class="progress-track"><i style="width:${pct(sectionProgress(section))}%;background:${chapter.accent}"></i></div>
+              <div class="section-progress-foot"><span>学习进度</span><span data-role="percent">${pct(sectionProgress(section))}%</span></div>
+            </div>
+            <a class="source-link" href="${sourceUrl(section)}" target="_blank" rel="noreferrer">
+              <svg><use href="#icon-pdf"></use></svg>打开教材页
+            </a>
+          </div>
+        </header>
+
+        <section class="daily-video-reference">
+          <div>
+            <span class="eyebrow">VIDEO SOURCE</span>
+            <h2>课堂回看</h2>
+            <p>视频位置与教材小节对应，遇到公式时回到原始讲解核对。</p>
+          </div>
+          <div class="video-reference-list">${renderVideoRefs(section.id)}</div>
+        </section>
+
+        <div class="daily-learning-stages">
+          <section class="daily-stage">
+            <div class="daily-stage-heading"><span>01</span><div><small>GET THE IDEA</small><h2>概念入门</h2></div></div>
+            <div class="daily-prose">${content.concept}</div>
+          </section>
+          <section class="daily-stage">
+            <div class="daily-stage-heading"><span>02</span><div><small>GO DEEPER</small><h2>进阶知识</h2></div></div>
+            <div class="daily-advanced-list">${advanced || '<p class="muted">本节暂无额外进阶内容。</p>'}</div>
+          </section>
+          <section class="daily-stage">
+            <div class="daily-stage-heading"><span>03</span><div><small>LOCK IT IN</small><h2>要点总结</h2></div></div>
+            <div class="daily-summary">${content.summary}</div>
+          </section>
+          <section class="daily-stage">
+            <div class="daily-stage-heading"><span>04</span><div><small>APPLY IT</small><h2>题目应用</h2></div></div>
+            ${questions.length
+              ? `<div class="daily-question-list">${questions.map((question) => renderQuestionDetails(question)).join("")}</div>`
+              : `<div class="daily-concept-check">
+                  <span class="eyebrow">CONCEPT CHECK</span>
+                  <h3>先用自己的话回答</h3>
+                  <p>${escapeHtml(section.check)}</p>
+                  <p class="hl-red">易错点：${escapeHtml(section.pitfall)}</p>
+                </div>`}
+          </section>
+        </div>
+
+        <div class="section-actions daily-page-actions">
+          <button class="state-button ${isRead(section) ? "active" : ""}" type="button"
+            data-action="read" data-section="${section.id}" aria-pressed="${isRead(section)}">
+            <svg><use href="#icon-check"></use></svg><span>${isRead(section) ? "已阅读" : "标记已阅读"}</span>
+          </button>
+          <button class="state-button ${isMastered(section) ? "active" : ""}" type="button"
+            data-action="master" data-section="${section.id}" aria-pressed="${isMastered(section)}">
+            <svg><use href="#icon-target"></use></svg><span>${isMastered(section) ? "已掌握" : "标记已掌握"}</span>
+          </button>
+          <button class="state-button ${state.bookmarks[section.id] ? "bookmarked" : ""}" type="button"
+            data-action="bookmark" data-section="${section.id}" aria-pressed="${Boolean(state.bookmarks[section.id])}">
+            <svg><use href="#icon-bookmark"></use></svg><span>${state.bookmarks[section.id] ? "已收藏" : "收藏"}</span>
+          </button>
+          <button class="state-button ${note.trim() ? "note-active" : ""}" type="button"
+            data-action="toggle-note" data-section="${section.id}">
+            <svg><use href="#icon-note"></use></svg><span>笔记</span>
+          </button>
+        </div>
+        <div class="note-editor ${note.trim() ? "visible" : ""}" data-note-editor="${section.id}">
+          <label><span>我的笔记</span><span class="notes-status" data-note-status="${section.id}">自动保存于本机</span></label>
+          <textarea data-note-input="${section.id}" placeholder="记下推导、疑问、例题结论或老师强调的考点…">${escapeHtml(note)}</textarea>
+        </div>
+        <nav class="daily-section-pager" aria-label="小节翻页">
+          ${prev ? `<a href="${sectionHref(chapter.id, prev.id)}"><small>上一节</small><strong>${escapeHtml(prev.no)} ${escapeHtml(prev.title)}</strong></a>` : "<span></span>"}
+          ${next ? `<a href="${sectionHref(chapter.id, next.id)}"><small>下一节</small><strong>${escapeHtml(next.no)} ${escapeHtml(next.title)}</strong></a>` : "<span></span>"}
+        </nav>
+      </article>`;
+  }
+
+  function videoCourseGroup(episode) {
+    const match = String(episode.title).trim().match(/^(\d+)(?:\.|\s|$)/);
+    return match ? Number(match[1]) : 99;
+  }
+
+  function renderVideoIndex() {
+    renderBreadcrumb({ view: "videos" });
+    const groupNames = {
+      1: "信号描述与基本运算",
+      2: "连续系统时域分析",
+      3: "连续系统频域分析",
+      4: "连续系统复频域分析",
+      5: "离散系统时域分析",
+      6: "Z 变换与离散复频域",
+      7: "系统模拟（旧课）",
+      8: "状态变量分析（旧课）"
+    };
+    const groups = [...new Set(videoEpisodes.map(videoCourseGroup))].sort((a, b) => a - b);
+    const totalSeconds = videoEpisodes.reduce((sum, episode) => sum + episode.duration, 0);
+    $("#appView").innerHTML = `
+      <section class="video-index-hero">
+        <span class="eyebrow">COURSE EPISODE INDEX · 50 EPISODES</span>
+        <h1>从视频回到教材，<br><em>每一集都有学习落点。</em></h1>
+        <p>统一索引 50 集课堂视频，标注时长、旧课属性和对应教材小节。题目数量与视频编号直接关联，方便按课堂顺序复习。</p>
+        <div class="question-bank-stats">
+          <div><strong>${videoEpisodes.length}</strong><span>视频集数</span></div>
+          <div><strong>${Math.floor(totalSeconds / 3600)}<small>h</small>${Math.round((totalSeconds % 3600) / 60)}<small>m</small></strong><span>总时长</span></div>
+          <div><strong>${videoEpisodes.filter((episode) => episode.sectionIds?.length).length}</strong><span>已映射集数</span></div>
+        </div>
+      </section>
+      <div class="video-course-groups">
+        ${groups.map((group) => {
+          const episodes = videoEpisodes.filter((episode) => videoCourseGroup(episode) === group);
+          return `<section class="video-course-group">
+            <div class="daily-group-heading">
+              <span>${String(group).padStart(2, "0")}</span>
+              <h3>${escapeHtml(groupNames[group] || "课程视频")}</h3>
+            </div>
+            <div class="video-course-grid">
+              ${episodes.map((episode) => {
+                const relatedQuestions = questionBank.filter((question) =>
+                  question.episodeIds.includes(episode.episode));
+                const sections = (episode.sectionIds || [])
+                  .map((id) => sectionById.get(id))
+                  .filter(Boolean);
+                return `<article class="video-course-card ${episode.legacy ? "legacy" : ""}">
+                  <div class="video-course-top">
+                    <span class="video-episode-no">第 ${episode.episode} 集</span>
+                    ${episode.legacy ? '<span class="video-legacy">旧课</span>' : ""}
+                    <span class="video-duration">${formatDuration(episode.duration)}</span>
+                  </div>
+                  <h4>${escapeHtml(episode.title)}</h4>
+                  <div class="video-course-meta">
+                    <span>${relatedQuestions.length} 道关联题</span>
+                    <a href="${episode.url}" target="_blank" rel="noreferrer">Bilibili 回看 ↗</a>
+                  </div>
+                  <div class="video-course-sections">
+                    ${sections.slice(0, 4).map((section) =>
+                      `<a href="${sectionHref(section.chapter.id, section.id)}">${escapeHtml(section.no)} ${escapeHtml(section.title)}</a>`
+                    ).join("")}
+                  </div>
+                </article>`;
+              }).join("")}
+            </div>
+          </section>`;
+        }).join("")}
+      </div>`;
+  }
+
+  function renderQuestionBank(focusId) {
+    renderBreadcrumb({ view: "questions" });
+    ui.questionFocus = focusId || null;
+    const focusedQuestion = focusId ? questionById.get(focusId) : null;
+    if (focusedQuestion && ui.questionCategory !== "all" &&
+        ui.questionCategory !== focusedQuestion.category) {
+      ui.questionCategory = "all";
+    }
+    if (focusedQuestion && ui.questionChapter !== "all" &&
+        ui.questionChapter !== focusedQuestion.chapterId) {
+      ui.questionChapter = "all";
+    }
+    const query = ui.questionQuery.trim().toLowerCase();
+    const terms = query.split(/\s+/).filter(Boolean);
+    const filtered = questionBank.filter((question) =>
+      (ui.questionCategory === "all" || question.category === ui.questionCategory) &&
+      (ui.questionChapter === "all" || question.chapterId === ui.questionChapter) &&
+      (!terms.length || terms.every((term) =>
+        [
+          question.title,
+          question.prompt,
+          question.analysis,
+          question.answer,
+          question.source,
+          question.category
+        ].map(stripHtml).join(" ").toLowerCase().includes(term)))
+    );
+    const categoryButtons = ["all", ...questionCategories].map((category) => {
+      const count = category === "all"
+        ? questionBank.length
+        : questionBank.filter((question) => question.category === category).length;
+      const label = category === "all" ? "全部题目" : category;
+      return `<button class="formula-chapter-chip ${ui.questionCategory === category ? "active" : ""}"
+        type="button" data-question-category="${escapeHtml(category)}">
+        ${escapeHtml(label)}<i>${count}</i></button>`;
+    }).join("");
+    const chapterButtons = chapters.map((chapter) => {
+      const count = questionBank.filter((question) => question.chapterId === chapter.id).length;
+      return `<button class="formula-chapter-chip ${ui.questionChapter === chapter.id ? "active" : ""}"
+        type="button" data-question-chapter="${chapter.id}">
+        <span>${chapter.num}</span>${escapeHtml(chapter.title)}<i>${count}</i></button>`;
+    }).join("");
+    $("#appView").innerHTML = `
+      <section class="question-bank-hero">
+        <span class="eyebrow">QUESTION LIBRARY · STEP BY STEP</span>
+        <h1>题目不是答案的堆叠，<br><em>而是知识点的组合。</em></h1>
+        <p>章内小节展示对应的代表性题目；本页把所有题目按知识类型独立归类，集中查看分析、步骤、技巧与红色易错点。</p>
+        <div class="question-bank-stats">
+          <div><strong>${questionBank.length}</strong><span>代表性题目</span></div>
+          <div><strong>${questionCategories.length}</strong><span>知识分类</span></div>
+          <div><strong>${questionBank.reduce((sum, item) => sum + item.steps.length, 0)}</strong><span>解题步骤</span></div>
+        </div>
+      </section>
+      <section class="formula-controls question-bank-controls">
+        <label class="question-search-box">
+          <svg><use href="#icon-search"></use></svg>
+          <input id="questionSearch" type="search" autocomplete="off"
+            placeholder="搜索题目标题、知识点、公式或视频编号..." value="${escapeHtml(ui.questionQuery)}">
+        </label>
+        <div class="formula-chapter-filter question-chapter-filter">
+          <button class="formula-chapter-chip ${ui.questionChapter === "all" ? "active" : ""}"
+            type="button" data-question-chapter="all" style="--chip-accent:var(--accent)">
+            全部章节<i>${questionBank.length}</i></button>
+          ${chapterButtons}
+        </div>
+        <div class="formula-chapter-filter question-category-filter">${categoryButtons}</div>
+        <div class="formula-result-bar"><span>${filtered.length} 道题</span><span>点击题目展开完整解析</span></div>
+      </section>
+      <div class="question-bank-list">
+        ${filtered.map((question) => renderQuestionDetails(question, {
+          open: question.id === ui.questionFocus
+        })).join("")}
+      </div>`;
+    $$("[data-question-category]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        ui.questionCategory = button.dataset.questionCategory;
+        renderQuestionBank(parseRoute().questionId);
+      });
+    });
+    $$("[data-question-chapter]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        ui.questionChapter = button.dataset.questionChapter;
+        renderQuestionBank(parseRoute().questionId);
+      });
+    });
+    if (focusId) {
+      setTimeout(() => {
+        const card = document.getElementById(`question-${focusId}`);
+        if (card) {
+          card.open = true;
+          card.scrollIntoView({ behavior: "smooth", block: "start" });
+          card.classList.add("target-flash");
+          setTimeout(() => card.classList.remove("target-flash"), 1600);
+        }
+      }, 80);
+    }
   }
 
   function renderChapter(chapterId, sectionId) {
@@ -1017,6 +1665,7 @@
     const open = ui.expanded.has(section.id);
     const bookmarked = Boolean(state.bookmarks[section.id]);
     const note = state.notes[section.id] || "";
+    const relatedQuestions = getSectionQuestions(section.id);
     const formulaHtml = (section.formulas || []).map((formula) => `
       <div class="formula-item">
         <span class="formula-label">${escapeHtml(formula.label)}</span>
@@ -1070,6 +1719,20 @@
             <svg><use href="#icon-check"></use></svg>
             <span><strong>自检：</strong>${escapeHtml(section.check)}</span>
           </div>
+          ${relatedQuestions.length ? `
+            <section class="final-question-section">
+              <div class="final-question-title">
+                <h4>题目</h4>
+                <a href="#/questions/${relatedQuestions[0].id}">打开分类题库</a>
+              </div>
+              ${relatedQuestions.map((question) => `
+                <details class="final-question-item">
+                  <summary>${escapeHtml(question.title)}</summary>
+                  <div>${question.prompt}</div>
+                  <p><strong>结论：</strong>${escapeHtml(stripHtml(question.answer))}</p>
+                  <p><span class="hl-red">易错点：${escapeHtml(question.pitfalls[0])}</span></p>
+                </details>`).join("")}
+            </section>` : ""}
           <div class="section-actions">
             <button class="state-button ${isRead(section) ? "active" : ""}" type="button"
               data-action="read" data-section="${section.id}" aria-pressed="${isRead(section)}">
@@ -1301,9 +1964,10 @@
     ui.expanded.add(sectionId);
     state.lastSection = sectionId;
     saveState();
-    const target = `#/chapter/${chapterId}/${sectionId}`;
+    const target = sectionHref(chapterId, sectionId);
     if (location.hash === target) {
-      renderChapter(chapterId, sectionId);
+      if (ui.studyMode === "daily") renderDailySection(chapterId, sectionId);
+      else renderChapter(chapterId, sectionId);
     } else {
       location.hash = target;
     }
@@ -1563,7 +2227,19 @@
         const points = (section.points || []).join(" ").toLowerCase();
         const formulas = (section.formulas || []).map((formula) => `${formula.label} ${formula.expr}`).join(" ").toLowerCase();
         const keywords = (section.keywords || []).join(" ").toLowerCase();
-        const haystack = `${no} ${title} ${summary} ${points} ${formulas} ${keywords}`;
+        const enhanced = getDailyContent(section);
+        const enhancedText = enhanced
+          ? stripHtml([
+              enhanced.concept,
+              (enhanced.advanced || []).map((item) => `${item.title} ${item.html}`).join(" "),
+              enhanced.summary
+            ].join(" ")).toLowerCase()
+          : "";
+        const questionText = getSectionQuestions(section.id)
+          .map((question) => `${question.title} ${stripHtml(question.prompt)} ${stripHtml(question.answer)}`)
+          .join(" ")
+          .toLowerCase();
+        const haystack = `${no} ${title} ${summary} ${points} ${formulas} ${keywords} ${enhancedText} ${questionText}`;
         if (!terms.every((term) => haystack.includes(term))) return null;
         let score = 0;
         terms.forEach((term) => {
@@ -1638,6 +2314,25 @@
     } catch (error) {
       // Theme persistence is optional.
     }
+  }
+
+  function setStudyMode(mode) {
+    if (mode !== "daily" && mode !== "final") return;
+    if (ui.studyMode === mode) return;
+    ui.studyMode = mode;
+    document.documentElement.dataset.studyMode = mode;
+    saveStudyMode(mode);
+    const route = parseRoute();
+    if (mode === "final" && route.view === "section") {
+      navigate(`#/chapter/${route.chapterId}/${route.sectionId}`);
+      return;
+    }
+    if (mode === "daily" && route.view === "chapter" && route.sectionId) {
+      navigate(`#/section/${route.chapterId}/${route.sectionId}`);
+      return;
+    }
+    render();
+    showToast(mode === "daily" ? "已切换到日学模式" : "已切换到期末模式");
   }
 
   function exportData() {
@@ -1741,6 +2436,12 @@
       return;
     }
 
+    const modeButton = target.closest("[data-study-mode]");
+    if (modeButton) {
+      setStudyMode(modeButton.dataset.studyMode);
+      return;
+    }
+
     const filterButton = target.closest("[data-filter]");
     if (filterButton) {
       setFilter(filterButton.dataset.filter);
@@ -1756,6 +2457,14 @@
     const formulaChapter = target.closest("[data-formula-chapter]");
     if (formulaChapter) {
       setFormulaChapter(formulaChapter.dataset.formulaChapter);
+      return;
+    }
+
+    const questionCategory = target.closest("[data-question-category]");
+    if (questionCategory) {
+      ui.questionCategory = questionCategory.dataset.questionCategory;
+      const route = parseRoute();
+      if (route.view === "questions") renderQuestionBank(route.questionId);
       return;
     }
 
@@ -1850,6 +2559,17 @@
       if (event.target.id === "formulaSearch") {
         ui.formulaQuery = event.target.value;
         renderFormulaResults();
+        return;
+      }
+      if (event.target.id === "questionSearch") {
+        ui.questionQuery = event.target.value;
+        const focus = $(".question-detail-card.target-flash");
+        renderQuestionBank(focus ? focus.id.replace(/^question-/, "") : null);
+        const input = $("#questionSearch");
+        if (input) {
+          input.focus();
+          input.setSelectionRange(input.value.length, input.value.length);
+        }
         return;
       }
       const textarea = event.target.closest("[data-note-input]");
