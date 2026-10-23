@@ -7,7 +7,7 @@
   <meta name="description" content="《信号与系统》修订版 · 分章分节学习台">
   <title>信号与系统 · 学习台</title>
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="assets/styles.css">
+  <link rel="stylesheet" href="assets/styles.css?v=20261024a">
   <script>
     (function () {
       try {
@@ -17,6 +17,33 @@
       } catch (error) {
         document.documentElement.dataset.theme = "light";
       }
+
+      var root = document.documentElement;
+      var limits = {
+        content: { min: 80, max: 180, key: "signals-study-content-font-scale-v1" },
+        ui: { min: 80, max: 140, key: "signals-study-ui-font-scale-v1" }
+      };
+
+      function normalizeFontPercent(kind) {
+        var rule = limits[kind];
+        try {
+          var raw = localStorage.getItem(rule.key);
+          if (raw === null || raw === "") return 100;
+          var value = Number(raw);
+          if (!Number.isFinite(value)) return 100;
+          value = Math.round(value / 5) * 5;
+          return Math.min(rule.max, Math.max(rule.min, value));
+        } catch (error) {
+          return 100;
+        }
+      }
+
+      var contentPercent = normalizeFontPercent("content");
+      var uiPercent = normalizeFontPercent("ui");
+      root.style.setProperty("--content-font-scale", contentPercent / 100);
+      root.style.setProperty("--ui-font-scale", uiPercent / 100);
+      root.dataset.contentFontPercent = String(contentPercent);
+      root.dataset.uiFontPercent = String(uiPercent);
     })();
   </script>
 </head>
@@ -181,6 +208,11 @@
             <svg class="theme-light"><use href="#icon-moon"></use></svg>
             <svg class="theme-dark"><use href="#icon-sun"></use></svg>
           </button>
+          <div class="top-text-size" role="group" aria-label="正文字号快捷调整">
+            <button id="contentFontDecrease" type="button" aria-label="减小正文字号">A−</button>
+            <button id="contentFontValue" class="text-size-value" type="button" data-open-settings aria-label="正文字号 100%，打开字号设置" aria-live="polite">100%</button>
+            <button id="contentFontIncrease" type="button" aria-label="增大正文字号">A+</button>
+          </div>
           <button class="icon-button" type="button" aria-label="打开学习数据与设置" data-open-settings>
             <svg><use href="#icon-settings"></use></svg>
           </button>
@@ -229,6 +261,33 @@
         <button class="icon-button" type="button" data-close-modal aria-label="关闭设置">
           <svg><use href="#icon-close"></use></svg>
         </button>
+      </div>
+      <div class="settings-block typography-settings">
+        <h3>阅读与字号</h3>
+        <p>正文与界面可分别调整。设置仅保存在当前浏览器，不影响学习进度和笔记。</p>
+        <div class="font-size-control" role="group" aria-labelledby="contentFontLabel">
+          <div class="font-size-control-head">
+            <label id="contentFontLabel" for="contentFontRange">正文字号</label>
+            <output id="contentFontRangeValue" for="contentFontRange">100%</output>
+          </div>
+          <input id="contentFontRange" type="range" min="80" max="180" step="5" value="100"
+            aria-labelledby="contentFontLabel" aria-valuetext="100%">
+          <div class="font-size-range-labels" aria-hidden="true"><span>80%</span><span>180%</span></div>
+        </div>
+        <div class="font-size-control" role="group" aria-labelledby="uiFontLabel">
+          <div class="font-size-control-head">
+            <label id="uiFontLabel" for="uiFontRange">界面字号</label>
+            <output id="uiFontRangeValue" for="uiFontRange">100%</output>
+          </div>
+          <input id="uiFontRange" type="range" min="80" max="140" step="5" value="100"
+            aria-labelledby="uiFontLabel" aria-valuetext="100%">
+          <div class="font-size-range-labels" aria-hidden="true"><span>80%</span><span>140%</span></div>
+        </div>
+        <div class="settings-actions">
+          <button class="button secondary" id="resetFontButton" type="button">
+            <svg><use href="#icon-reset"></use></svg>恢复默认字号
+          </button>
+        </div>
       </div>
       <div class="settings-block">
         <h3>学习数据</h3>
@@ -281,6 +340,6 @@
   <script src="assets/data/teacher-notes.js?v=20261023m"></script>
   <script src="assets/data/teacher-notes-auto.js?v=20261023m"></script>
   <script src="assets/data/expanded-questions.js?v=20261023m"></script>
-  <script src="assets/app.js?v=20261023m"></script>
+  <script src="assets/app.js?v=20261024a"></script>
 </body>
 </html>
