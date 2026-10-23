@@ -18,6 +18,12 @@
   });
   const STORAGE_KEY = "signals-study-progress-v1";
   const MODE_STORAGE_KEY = "signals-study-mode-v1";
+  const CONTENT_FONT_KEY = "signals-study-content-font-scale-v1";
+  const UI_FONT_KEY = "signals-study-ui-font-scale-v1";
+  const FONT_SIZE_RULES = {
+    content: { key: CONTENT_FONT_KEY, min: 80, max: 180 },
+    ui: { key: UI_FONT_KEY, min: 80, max: 140 }
+  };
   const PDF_PAGE_OFFSET = 14;
   const $ = (selector, root) => (root || document).querySelector(selector);
   const $$ = (selector, root) => Array.from((root || document).querySelectorAll(selector));
@@ -79,6 +85,7 @@
     questionQuery: "",
     questionFocus: null
   };
+  let fontSizes = loadFontSizes();
   document.documentElement.dataset.studyMode = ui.studyMode;
 
   const CHAPTER_GROUPS = {
@@ -209,6 +216,80 @@
     } catch (error) {
       // Mode persistence is optional.
     }
+  }
+
+  function normalizeFontPercent(value, kind) {
+    const rule = FONT_SIZE_RULES[kind];
+    const number = Number(value);
+    if (!rule || !Number.isFinite(number)) return 100;
+    const stepped = Math.round(number / 5) * 5;
+    return Math.min(rule.max, Math.max(rule.min, stepped));
+  }
+
+  function readFontPercent(kind) {
+    const rule = FONT_SIZE_RULES[kind];
+    try {
+      const raw = localStorage.getItem(rule.key);
+      if (raw === null || raw === "") return 100;
+      return normalizeFontPercent(raw, kind);
+    } catch (error) {
+      return 100;
+    }
+  }
+
+  function loadFontSizes() {
+    return {
+      content: readFontPercent("content"),
+      ui: readFontPercent("ui")
+    };
+  }
+
+  function updateFontSizeControls() {
+    const contentValue = $("#contentFontRange");
+    const uiValue = $("#uiFontRange");
+    if (!contentValue || !uiValue) return;
+
+    contentValue.value = String(fontSizes.content);
+    uiValue.value = String(fontSizes.ui);
+    $("#contentFontRangeValue").textContent = `${fontSizes.content}%`;
+    $("#uiFontRangeValue").textContent = `${fontSizes.ui}%`;
+    contentValue.setAttribute("aria-valuetext", `${fontSizes.content}%`);
+    uiValue.setAttribute("aria-valuetext", `${fontSizes.ui}%`);
+
+    const contentButtonValue = $("#contentFontValue");
+    contentButtonValue.textContent = `${fontSizes.content}%`;
+    contentButtonValue.setAttribute("aria-label", `正文字号 ${fontSizes.content}%，打开字号设置`);
+    $("#contentFontDecrease").disabled = fontSizes.content <= FONT_SIZE_RULES.content.min;
+    $("#contentFontIncrease").disabled = fontSizes.content >= FONT_SIZE_RULES.content.max;
+  }
+
+  function applyFontSizes(options = {}) {
+    const root = document.documentElement;
+    root.style.setProperty("--content-font-scale", fontSizes.content / 100);
+    root.style.setProperty("--ui-font-scale", fontSizes.ui / 100);
+    root.dataset.contentFontPercent = String(fontSizes.content);
+    root.dataset.uiFontPercent = String(fontSizes.ui);
+    updateFontSizeControls();
+
+    if (!options.persist) return;
+    try {
+      localStorage.setItem(CONTENT_FONT_KEY, String(fontSizes.content));
+      localStorage.setItem(UI_FONT_KEY, String(fontSizes.ui));
+    } catch (error) {
+      showToast("浏览器未允许保存字号设置");
+    }
+  }
+
+  function setFontSize(kind, value, persist = true) {
+    if (!FONT_SIZE_RULES[kind]) return;
+    fontSizes[kind] = normalizeFontPercent(value, kind);
+    applyFontSizes({ persist });
+  }
+
+  function resetFontSizes() {
+    fontSizes = { content: 100, ui: 100 };
+    applyFontSizes({ persist: true });
+    showToast("字号已恢复默认");
   }
 
   function loadState() {
@@ -1873,12 +1954,12 @@
     const rootSvg = `
       <g class="mind-root">
         <rect x="${rootX}" y="${rootY}" width="${rootW}" height="148" rx="20" style="fill:var(--deep)"/>
-        <text x="${rootX + 16}" y="${rootY + 24}" class="mind-eyebrow" style="fill:#d9b276;font-size:8px;font-weight:700;letter-spacing:1.5px">CHAPTER ${chapter.num}</text>
+        <text x="${rootX + 16}" y="${rootY + 24}" class="mind-eyebrow" style="fill:#d9b276;font-size:calc(8px * var(--type-scale, 1));font-weight:700;letter-spacing:1.5px">CHAPTER ${chapter.num}</text>
         ${rootTitleLines.map((line, index) => `
-          <text x="${rootX + 16}" y="${rootY + 47 + index * 18}" style="fill:#fff8ec;font-family:var(--serif);font-size:14px;font-weight:700">${escapeHtml(line)}</text>`).join("")}
+          <text x="${rootX + 16}" y="${rootY + 47 + index * 18}" style="fill:#fff8ec;font-family:var(--serif);font-size:calc(14px * var(--type-scale, 1));font-weight:700">${escapeHtml(line)}</text>`).join("")}
         <line x1="${rootX + 16}" y1="${rootY + 100}" x2="${rootX + rootW - 20}" y2="${rootY + 100}" stroke="rgba(255,255,255,.16)"/>
         ${coreLines.map((line, index) => `
-          <text x="${rootX + 16}" y="${rootY + 117 + index * 11}" style="fill:rgba(255,248,236,.56);font-size:7px">${escapeHtml(line)}</text>`).join("")}
+          <text x="${rootX + 16}" y="${rootY + 117 + index * 11}" style="fill:rgba(255,248,236,.56);font-size:calc(7px * var(--type-scale, 1))">${escapeHtml(line)}</text>`).join("")}
       </g>`;
 
     const branches = layout.map((group, groupIndex) => {
@@ -1894,7 +1975,7 @@
             <rect x="${leafX}" y="${y}" width="${leafW}" height="${leafHeight}" rx="8"
               style="fill:var(--surface);stroke:color-mix(in srgb, ${accent} 25%, var(--line));stroke-width:1"/>
             <circle cx="${leafX + 13}" cy="${y + leafHeight / 2}" r="2.3" style="fill:${accent}"/>
-            <text x="${leafX + 23}" y="${y + 19}" style="fill:var(--ink);font-size:8.5px">${escapeHtml(shortLabel)}</text>
+            <text x="${leafX + 23}" y="${y + 19}" style="fill:var(--ink);font-size:calc(8.5px * var(--type-scale, 1))">${escapeHtml(shortLabel)}</text>
           </g>`;
       }).join("");
       const leafPaths = group.sections.map((section, index) => {
@@ -1910,9 +1991,9 @@
             style="fill:${accent};fill-opacity:${groupIndex % 2 === 0 ? ".12" : ".07"};stroke:${accent};stroke-opacity:.35"/>
           ${branchLines.map((line, index) => `
             <text x="${branchX + 14}" y="${group.branchY + (branchLines.length === 1 ? 4 : -2 + index * 13)}"
-              style="fill:var(--ink);font-size:9.5px;font-weight:600">${escapeHtml(line)}</text>`).join("")}
+              style="fill:var(--ink);font-size:calc(9.5px * var(--type-scale, 1));font-weight:600">${escapeHtml(line)}</text>`).join("")}
           <text x="${branchX + branchW - 11}" y="${group.branchY + 3}" text-anchor="end"
-            style="fill:${accent};font-family:var(--mono);font-size:7px">${group.sections.length}</text>
+            style="fill:${accent};font-family:var(--mono);font-size:calc(7px * var(--type-scale, 1))">${group.sections.length}</text>
         </g>
         ${leafSvg}`;
     }).join("");
@@ -2341,6 +2422,7 @@
   }
 
   function openSettings() {
+    updateFontSizeControls();
     $("#settingsModal").hidden = false;
     document.body.classList.add("modal-open");
   }
@@ -2527,11 +2609,6 @@
       return;
     }
 
-    if (target.closest("[data-open-settings]")) {
-      openSettings();
-      return;
-    }
-
     if (target.closest("[data-close-modal]")) {
       const modal = target.closest(".modal-layer");
       if (modal) closeModal(modal.id);
@@ -2568,6 +2645,22 @@
       else openMobileNav();
     });
     $("#themeButton").addEventListener("click", toggleTheme);
+    $$("[data-open-settings]").forEach((button) => {
+      button.addEventListener("click", openSettings);
+    });
+    $$("[data-close-modal]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const modal = button.closest(".modal-layer");
+        if (modal) closeModal(modal.id);
+      });
+    });
+    $("#contentFontDecrease").addEventListener("click", () => {
+      setFontSize("content", fontSizes.content - 5);
+    });
+    $("#contentFontIncrease").addEventListener("click", () => {
+      setFontSize("content", fontSizes.content + 5);
+    });
+    $("#resetFontButton").addEventListener("click", resetFontSizes);
     $("#searchTrigger").addEventListener("click", openSearch);
     $("#exportButton").addEventListener("click", exportData);
     $("#resetButton").addEventListener("click", resetProgress);
@@ -2596,6 +2689,14 @@
     });
 
     document.addEventListener("input", (event) => {
+      if (event.target.id === "contentFontRange") {
+        setFontSize("content", event.target.value);
+        return;
+      }
+      if (event.target.id === "uiFontRange") {
+        setFontSize("ui", event.target.value);
+        return;
+      }
       if (event.target.id === "formulaSearch") {
         ui.formulaQuery = event.target.value;
         renderFormulaResults();
@@ -2668,6 +2769,7 @@
       $("#appView").innerHTML = `<div class="search-empty">知识数据加载失败，请确认 data 目录完整。</div>`;
       return;
     }
+    applyFontSizes();
     renderSidebar();
     bindEvents();
     render();
