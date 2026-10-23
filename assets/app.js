@@ -2644,6 +2644,7 @@
       if (document.body.classList.contains("nav-open")) closeMobileNav();
       else openMobileNav();
     });
+    $("#sidebarScrim").addEventListener("click", closeMobileNav);
     $("#themeButton").addEventListener("click", toggleTheme);
     $$("[data-open-settings]").forEach((button) => {
       button.addEventListener("click", openSettings);
