@@ -3,6 +3,7 @@
 
   const chapters = window.SIGNAL_CHAPTERS || [];
   const dailyContent = window.SIGNAL_DAILY_CONTENT || {};
+  const teacherNotes = window.SIGNAL_TEACHER_NOTES || {};
   const videoIndex = window.SIGNAL_VIDEO_INDEX || { episodes: [] };
   const videoEpisodes = videoIndex.episodes || [];
   const rawQuestions = [
@@ -1040,6 +1041,10 @@
     return videosBySection.get(sectionId) || [];
   }
 
+  function getTeacherNotes(sectionId) {
+    return Array.isArray(teacherNotes[sectionId]) ? teacherNotes[sectionId] : [];
+  }
+
   function renderVideoRefs(sectionId) {
     const refs = getSectionVideoRefs(sectionId);
     if (!refs.length) {
@@ -1069,6 +1074,7 @@
   }
 
   function renderFallbackDailyContent(section) {
+    const notes = getTeacherNotes(section.id);
     const formulaHtml = (section.formulas || []).map((formula) => `
       <div class="formula-item">
         <span class="formula-label">${escapeHtml(formula.label)}</span>
@@ -1079,14 +1085,30 @@
       concept: `
         <p><mark>${section.summary}</mark></p>
         <p>${section.chapter.overview}</p>
+        ${notes[0]?.summary ? `<p>${notes[0].summary}</p>` : ""}
         <p>本节要解决的具体问题：${section.check}</p>`,
-      advanced: [{
-        title: "定义、公式与适用条件",
-        html: `<ul>${(section.points || []).map((point) => `<li>${point}</li>`).join("")}</ul>
-          <div class="formula-list">${formulaHtml || '<span class="muted">本节以概念理解为主。</span>'}</div>`
-      }],
+      advanced: [
+        ...notes.map((note) => ({
+          title: `第 ${note.episode} 集课堂精讲${note.timestamp ? ` · ${note.timestamp}` : ""}`,
+          html: `
+            ${note.summary ? `<p>${note.summary}</p>` : ""}
+            ${(note.points || []).length ? `<ul>${note.points.map((point) => `<li>${point}</li>`).join("")}</ul>` : ""}
+            ${(note.formulas || []).length ? `<div class="formula-list">${note.formulas.map((formula) =>
+              `<div class="formula-item"><span class="formula-label">${escapeHtml(formula.label || "关键关系")}</span><span class="formula">${formula.expr || ""}</span>${formula.note ? `<span class="formula-note">${escapeHtml(formula.note)}</span>` : ""}</div>`
+            ).join("")}</div>` : ""}
+            ${(note.examples || []).length ? `<p><strong>课堂例子：</strong>${note.examples.join(" ")}</p>` : ""}
+            ${note.pitfall ? `<p><span class="hl-red">易错点：${escapeHtml(note.pitfall)}</span></p>` : ""}`
+        })),
+        {
+          title: "定义、公式与适用条件",
+          html: `<ul>${(section.points || []).map((point) => `<li>${point}</li>`).join("")}</ul>
+            <div class="formula-list">${formulaHtml || '<span class="muted">本节以概念理解为主。</span>'}</div>`
+        }
+      ],
       summary: `
         <p><mark>核心结论：</mark>${section.summary}</p>
+        ${notes.filter((note) => note.takeaway).map((note) =>
+          `<p><mark>第 ${note.episode} 集总结：</mark>${note.takeaway}</p>`).join("")}
         <p><mark>自检问题：</mark>${escapeHtml(section.check)}</p>
         <p><span class="hl-red">易错点：</span>${escapeHtml(section.pitfall)}</p>`,
       questionIds: getSectionQuestions(section.id).map((question) => question.id)
@@ -1249,8 +1271,11 @@
     saveState();
     const content = getDailyContent(section) || renderFallbackDailyContent(section);
     const videoRefs = getSectionVideoRefs(section.id);
+    const sectionTeacherNotes = getTeacherNotes(section.id);
     const sourceLabel = getDailyContent(section)
       ? "视频+教材深度整理"
+      : sectionTeacherNotes.length
+        ? "逐集口述校正 + 教材深挖"
       : videoRefs.length
         ? "视频主题+教材深挖"
         : chapter.id === "ch6"
@@ -1295,6 +1320,12 @@
             </a>
           </div>
         </header>
+
+        ${sectionTeacherNotes.length ? `
+          <div class="transcript-quality-note">
+            <strong>本地全量转写</strong>
+            <span>课堂原话按时间点摘录，已进行术语与同音错词校正；关键公式以 PPT/教材公式卡复核。</span>
+          </div>` : ""}
 
         <section class="daily-video-reference">
           <div>
@@ -2239,7 +2270,16 @@
           .map((question) => `${question.title} ${stripHtml(question.prompt)} ${stripHtml(question.answer)}`)
           .join(" ")
           .toLowerCase();
-        const haystack = `${no} ${title} ${summary} ${points} ${formulas} ${keywords} ${enhancedText} ${questionText}`;
+        const teacherText = getTeacherNotes(section.id)
+          .map((note) => [
+            note.summary,
+            ...(note.points || []),
+            note.pitfall,
+            note.takeaway
+          ].join(" "))
+          .join(" ")
+          .toLowerCase();
+        const haystack = `${no} ${title} ${summary} ${points} ${formulas} ${keywords} ${enhancedText} ${questionText} ${teacherText}`;
         if (!terms.every((term) => haystack.includes(term))) return null;
         let score = 0;
         terms.forEach((term) => {

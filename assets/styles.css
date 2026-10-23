@@ -3724,6 +3724,24 @@ kbd {
   box-shadow: var(--shadow-sm);
 }
 
+.transcript-quality-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--teal) 28%, var(--line));
+  border-radius: 11px;
+  background: var(--teal-soft);
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
+.transcript-quality-note strong {
+  color: var(--teal);
+  white-space: nowrap;
+}
+
 .daily-video-reference h2 {
   margin: 3px 0 6px;
   font-family: var(--serif);
@@ -3775,6 +3793,15 @@ kbd {
   font-family: var(--mono);
   font-size: 10px;
   font-weight: 750;
+}
+
+.teacher-time {
+  display: inline-block;
+  margin-right: 5px;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 800;
 }
 
 .video-legacy {

@@ -37,6 +37,9 @@
     const chapter = section.chapter;
     const formulas = section.formulas || [];
     const points = section.points || [];
+    const note = Object.values(window.SIGNAL_TEACHER_NOTES || {})
+      .flat()
+      .find((item) => item.episode === episode.episode);
     const episodeLabel = typeof episode.episode === "number"
       ? `第${episode.episode}集`
       : episode.episode;
@@ -48,7 +51,17 @@
     let answer;
     let technique;
 
-    if (variant === 1 && formulas.length) {
+    if (variant === 0 && note) {
+      title = `${titlePrefix} 课堂精讲：口述要点与自检`;
+      prompt = `<p>根据第 ${episode.episode} 集课堂讲解，回答：${section.check}</p>`;
+      analysis = `<p>${note.summary}</p>`;
+      steps = [
+        ...(note.points || []).slice(0, 6),
+        `最后用一句话总结：${note.takeaway || section.summary}`
+      ];
+      answer = `<p>${section.summary}</p>`;
+      technique = `<p>先按课堂时间线复述关键判断，再回到教材定义检查边界条件。</p>`;
+    } else if (variant === 1 && formulas.length) {
       title = `${titlePrefix} ${typeNames[variant]}：写出核心关系`;
       prompt = `<p>结合视频与本小节，写出关键公式或关系，并说明各符号和适用条件。</p>${sectionFormula(section)}`;
       analysis = `<p>本问考查公式的来源、符号含义和适用条件，不能只抄公式。</p>`;
