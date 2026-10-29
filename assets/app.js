@@ -891,10 +891,14 @@
             </button>
           </label>
           <div class="formula-mode-switch" aria-label="公式查看模式">
-            <button type="button" data-formula-mode="browse" class="${ui.formulaMode === "browse" ? "active" : ""}">
+            <button type="button" data-formula-mode="browse"
+              class="${ui.formulaMode === "browse" ? "active" : ""}"
+              aria-pressed="${ui.formulaMode === "browse" ? "true" : "false"}">
               卡片索引
             </button>
-            <button type="button" data-formula-mode="recall" class="${ui.formulaMode === "recall" ? "active" : ""}">
+            <button type="button" data-formula-mode="recall"
+              class="${ui.formulaMode === "recall" ? "active" : ""}"
+              aria-pressed="${ui.formulaMode === "recall" ? "true" : "false"}">
               随机抽背
             </button>
           </div>
@@ -907,7 +911,7 @@
           ${chapterFilters}
         </div>
         <div class="formula-result-bar">
-          <span id="formulaResultCount"></span>
+          <span id="formulaResultCount" aria-live="polite"></span>
           <span>点击公式卡可复制，点击小节名可回到知识板块</span>
         </div>
       </section>
@@ -915,6 +919,7 @@
       <div class="formula-results" id="formulaResults"></div>`;
 
     renderFormulaResults();
+    bindFormulaInteractions();
   }
 
   function renderFormulaResults() {
@@ -928,10 +933,14 @@
         : `当前抽背范围：${results.length} 张公式卡`;
     }
     $$("[data-formula-chapter]").forEach((button) => {
-      button.classList.toggle("active", button.dataset.formulaChapter === ui.formulaChapter);
+      const active = button.dataset.formulaChapter === ui.formulaChapter;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
     });
     $$("[data-formula-mode]").forEach((button) => {
-      button.classList.toggle("active", button.dataset.formulaMode === ui.formulaMode);
+      const active = button.dataset.formulaMode === ui.formulaMode;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
     });
     const clearButton = $(".formula-clear-search");
     if (clearButton) clearButton.classList.toggle("is-hidden", !ui.formulaQuery);
@@ -960,6 +969,77 @@
       <div class="formula-card-grid">
         ${results.map((formula, index) => renderFormulaCard(formula, index)).join("")}
       </div>`;
+  }
+
+  function bindFormulaInteractions() {
+    $$(".formula-hero [data-formula-mode]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setFormulaMode(button.dataset.formulaMode);
+      });
+    });
+
+    const controls = $(".formula-controls");
+    if (controls) {
+      controls.addEventListener("click", (event) => {
+        const clickTarget = event.target instanceof Element ? event.target : null;
+        const target = clickTarget && clickTarget.closest(
+          "[data-formula-mode], [data-formula-chapter], [data-action]"
+        );
+        if (!target || !controls.contains(target)) return;
+        event.preventDefault();
+        event.stopPropagation();
+
+        const modeButton = target.closest("[data-formula-mode]");
+        if (modeButton) {
+          setFormulaMode(modeButton.dataset.formulaMode);
+          return;
+        }
+
+        const chapterButton = target.closest("[data-formula-chapter]");
+        if (chapterButton) {
+          setFormulaChapter(chapterButton.dataset.formulaChapter);
+          return;
+        }
+
+        if (target.dataset.action === "clear-formula-search") {
+          ui.formulaQuery = "";
+          const input = $("#formulaSearch");
+          if (input) {
+            input.value = "";
+            input.focus();
+          }
+          renderFormulaResults();
+          return;
+        }
+
+        if (target.dataset.action === "reset-formula-filter") {
+          resetFormulaFilter();
+        }
+      });
+    }
+
+    const results = $("#formulaResults");
+    if (results) {
+      results.addEventListener("click", (event) => {
+        const clickTarget = event.target instanceof Element ? event.target : null;
+        const target = clickTarget && clickTarget.closest("[data-action], [data-copy-formula]");
+        if (!target || !results.contains(target)) return;
+        event.preventDefault();
+        event.stopPropagation();
+
+        const copyButton = target.closest("[data-copy-formula]");
+        if (copyButton) {
+          copyFormula(copyButton.dataset.copyFormula);
+          return;
+        }
+
+        if (target.dataset.action === "formula-reveal") toggleFormulaAnswer();
+        if (target.dataset.action === "formula-next") nextFormulaCard();
+        if (target.dataset.action === "reset-formula-filter") resetFormulaFilter();
+      });
+    }
   }
 
   function renderFormulaCard(formula, index) {
