@@ -2,10 +2,7 @@
   "use strict";
 
   const chapters = window.SIGNAL_CHAPTERS || [];
-  const dailyContent = window.SIGNAL_DAILY_CONTENT || {};
-  const teacherNotes = window.SIGNAL_TEACHER_NOTES || {};
-  const videoIndex = window.SIGNAL_VIDEO_INDEX || { episodes: [] };
-  const videoEpisodes = videoIndex.episodes || [];
+  const dailyContent = window.SIGNAL_INTEGRATED_CONTENT || {};
   const rawQuestions = [
     ...(window.SIGNAL_QUESTION_BANK || []),
     ...(window.SIGNAL_EXPANDED_QUESTIONS || [])
@@ -28,6 +25,47 @@
   const $ = (selector, root) => (root || document).querySelector(selector);
   const $$ = (selector, root) => Array.from((root || document).querySelectorAll(selector));
 
+  function uniqueStrings(values) {
+    const seen = new Set();
+    return values.filter((value) => {
+      const key = String(value).replace(/\s+/g, " ").trim();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  function uniqueFormulas(values) {
+    const seen = new Set();
+    const result = [];
+    values.forEach((formula) => {
+      const key = String(formula.expr || "").replace(/<[^>]+>/g, "").replace(/\s+/g, "").toLowerCase();
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      result.push({
+        ...formula,
+        expr: String(formula.expr).replace(/<(?=\s*(?:\d|∞|−|-))/g, "&lt;")
+      });
+    });
+    return result;
+  }
+
+  chapters.forEach((chapter) => {
+    chapter.sections.forEach((section) => {
+      const integrated = dailyContent[chapter.id] && dailyContent[chapter.id][section.id];
+      if (!integrated) return;
+      section.points = uniqueStrings([
+        ...(section.points || []),
+        ...(integrated.extraPoints || [])
+      ]);
+      section.formulas = uniqueFormulas([
+        ...(section.formulas || []),
+        ...(integrated.extraFormulas || [])
+      ]);
+      if (integrated.finalPitfall) section.pitfall = integrated.finalPitfall;
+    });
+  });
+
   const allSections = chapters.flatMap((chapter, chapterIndex) =>
     chapter.sections.map((section, sectionIndex) => ({
       ...section,
@@ -45,13 +83,6 @@
   });
   const questionById = new Map(questionBank.map((question) => [question.id, question]));
   const questionCategories = [...new Set(questionBank.map((question) => question.category))];
-  const videosBySection = new Map();
-  videoEpisodes.forEach((episode) => {
-    (episode.sectionIds || []).forEach((sectionId) => {
-      if (!videosBySection.has(sectionId)) videosBySection.set(sectionId, []);
-      videosBySection.get(sectionId).push(episode);
-    });
-  });
   const allFormulas = [];
   allSections.forEach((section) => {
     (section.formulas || []).forEach((formula, index) => {
@@ -84,6 +115,18 @@
     questionChapter: "all",
     questionQuery: "",
     questionFocus: null
+  };
+  const imageViewerState = {
+    scale: 1,
+    x: 0,
+    y: 0,
+    dragging: false,
+    pointerId: null,
+    pointerX: 0,
+    pointerY: 0,
+    pointers: new Map(),
+    pinchDistance: 0,
+    pinchScale: 1
   };
   let fontSizes = loadFontSizes();
   document.documentElement.dataset.studyMode = ui.studyMode;
@@ -430,9 +473,6 @@
         questionId: parts[1] && questionById.has(parts[1]) ? parts[1] : null
       };
     }
-    if (parts[0] === "videos") {
-      return { view: "videos" };
-    }
     if (parts[0] === "formulas") {
       return { view: "formulas" };
     }
@@ -448,6 +488,10 @@
   }
 
   function render() {
+    if (location.hash === "#/videos" || location.hash.startsWith("#/videos/")) {
+      navigate("#/overview");
+      return;
+    }
     const route = parseRoute();
     closeMobileNav();
     const fullscreenMap = $(".mindmap-card.fullscreen");
@@ -479,9 +523,6 @@
     } else if (route.view === "questions") {
       renderQuestionBank(route.questionId);
       document.title = "分类题目与解析 · 信号与系统";
-    } else if (route.view === "videos") {
-      renderVideoIndex();
-      document.title = "视频课程索引 · 信号与系统";
     } else {
       renderOverview();
       document.title = "信号与系统 · 学习台";
@@ -516,9 +557,6 @@
     $$("[data-question-count]").forEach((element) => {
       element.textContent = String(questionBank.length);
     });
-    $$("[data-video-count]").forEach((element) => {
-      element.textContent = String(videoEpisodes.length);
-    });
   }
 
   function updateSidebarActive(route) {
@@ -532,9 +570,6 @@
     });
     $$("[data-nav-questions]").forEach((link) => {
       link.classList.toggle("active", route.view === "questions");
-    });
-    $$("[data-nav-videos]").forEach((link) => {
-      link.classList.toggle("active", route.view === "videos");
     });
     updateModeSwitch();
   }
@@ -607,11 +642,6 @@
         <a href="#/overview">学习总览</a>
         <span class="separator">/</span>
         <span class="current">分类题目与解析</span>`;
-    } else if (route.view === "videos") {
-      crumb.innerHTML = `
-        <a href="#/overview">学习总览</a>
-        <span class="separator">/</span>
-        <span class="current">视频课程索引</span>`;
     } else {
       crumb.innerHTML = `
         <span class="current">学习总览</span>
@@ -664,7 +694,7 @@
         <div class="hero-copy">
           <span class="hero-kicker">SIGNALS &amp; SYSTEMS · STUDY WORKBENCH</span>
           <h1>把复杂系统，<br>拆成<em>可掌握的信号</em>。</h1>
-          <p>依据《信号与系统（修订版）》构建的八章学习台。日学模式逐节深读，期末模式压缩为要点与题目；两种模式可随时切换。</p>
+          <p>依据《信号与系统（修订版）》并整合 50 集课堂讲解构建八章学习台。日学逐节深读，期末压缩复习；视频依据直接嵌入对应知识位置。</p>
           <div class="hero-actions">
             <a class="button primary" href="${sectionHref(target.chapter.id, target.id)}">
               继续学习
@@ -760,12 +790,6 @@
           <span class="feature-icon"><svg><use href="#icon-target"></use></svg></span>
           <strong>分类题目与解析</strong>
           <p>汇总 ${questionBank.length} 道代表性题，按知识类型独立分类，附步骤、技巧与易错点。</p>
-        </a>
-        <a class="feature-card feature-card-live" href="#/videos">
-          <span class="feature-badge">LIVE</span>
-          <span class="feature-icon"><svg><use href="#icon-clock"></use></svg></span>
-          <strong>视频课程索引</strong>
-          <p>50 集课堂视频按课程章节归档，关联教材小节和对应题目。</p>
         </a>
         <button class="feature-card" type="button" data-feature="错题本">
           <span class="feature-badge">PLANNED</span>
@@ -1118,44 +1142,11 @@
       : null;
   }
 
-  function getSectionVideoRefs(sectionId) {
-    return videosBySection.get(sectionId) || [];
-  }
-
-  function getTeacherNotes(sectionId) {
-    return Array.isArray(teacherNotes[sectionId]) ? teacherNotes[sectionId] : [];
-  }
-
-  function renderVideoRefs(sectionId) {
-    const refs = getSectionVideoRefs(sectionId);
-    if (!refs.length) {
-      return `<div class="video-reference-empty"><strong>本章暂无对应视频</strong><span>内容按教材深挖整理。</span></div>`;
-    }
-    return refs.map((episode) => `
-      <a class="video-reference-card" href="${episode.url}" target="_blank" rel="noreferrer">
-        <span class="video-episode-no">第 ${episode.episode} 集</span>
-        <strong>${escapeHtml(episode.title)}</strong>
-        <small>${formatDuration(episode.duration)} · 打开 Bilibili 对应视频</small>
-        ${episode.legacy ? '<span class="video-legacy">旧课</span>' : ""}
-      </a>`).join("");
-  }
-
-  function formatDuration(seconds) {
-    const total = Math.max(0, Number(seconds) || 0);
-    const hours = Math.floor(total / 3600);
-    const minutes = Math.floor((total % 3600) / 60);
-    const secs = Math.floor(total % 60);
-    return hours
-      ? `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`
-      : `${minutes}:${String(secs).padStart(2, "0")}`;
-  }
-
   function getSectionQuestions(sectionId) {
     return questionBank.filter((question) => question.sectionIds.includes(sectionId));
   }
 
   function renderFallbackDailyContent(section) {
-    const notes = getTeacherNotes(section.id);
     const formulaHtml = (section.formulas || []).map((formula) => `
       <div class="formula-item">
         <span class="formula-label">${escapeHtml(formula.label)}</span>
@@ -1166,20 +1157,8 @@
       concept: `
         <p><mark>${section.summary}</mark></p>
         <p>${section.chapter.overview}</p>
-        ${notes[0]?.summary ? `<p>${notes[0].summary}</p>` : ""}
         <p>本节要解决的具体问题：${section.check}</p>`,
       advanced: [
-        ...notes.map((note) => ({
-          title: `第 ${note.episode} 集课堂精讲${note.timestamp ? ` · ${note.timestamp}` : ""}`,
-          html: `
-            ${note.summary ? `<p>${note.summary}</p>` : ""}
-            ${(note.points || []).length ? `<ul>${note.points.map((point) => `<li>${point}</li>`).join("")}</ul>` : ""}
-            ${(note.formulas || []).length ? `<div class="formula-list">${note.formulas.map((formula) =>
-              `<div class="formula-item"><span class="formula-label">${escapeHtml(formula.label || "关键关系")}</span><span class="formula">${formula.expr || ""}</span>${formula.note ? `<span class="formula-note">${escapeHtml(formula.note)}</span>` : ""}</div>`
-            ).join("")}</div>` : ""}
-            ${(note.examples || []).length ? `<p><strong>课堂例子：</strong>${note.examples.join(" ")}</p>` : ""}
-            ${note.pitfall ? `<p><span class="hl-red">易错点：${escapeHtml(note.pitfall)}</span></p>` : ""}`
-        })),
         {
           title: "定义、公式与适用条件",
           html: `<ul>${(section.points || []).map((point) => `<li>${point}</li>`).join("")}</ul>
@@ -1188,8 +1167,6 @@
       ],
       summary: `
         <p><mark>核心结论：</mark>${section.summary}</p>
-        ${notes.filter((note) => note.takeaway).map((note) =>
-          `<p><mark>第 ${note.episode} 集总结：</mark>${note.takeaway}</p>`).join("")}
         <p><mark>自检问题：</mark>${escapeHtml(section.check)}</p>
         <p><span class="hl-red">易错点：</span>${escapeHtml(section.pitfall)}</p>`,
       questionIds: getSectionQuestions(section.id).map((question) => question.id)
@@ -1253,7 +1230,6 @@
     const stats = chapterStats(chapter);
     const enhancedCount = chapter.sections.filter((section) =>
       getDailyContent(section) ||
-      getSectionVideoRefs(section.id).length ||
       getSectionQuestions(section.id).length
     ).length;
     const chapterTarget = chapter.sections.find((section) => !isMastered(section)) ||
@@ -1267,8 +1243,8 @@
         </div>
         <div class="daily-section-grid">
           ${group.sections.map((section) => {
-            const videoRefs = getSectionVideoRefs(section.id);
-            const deep = Boolean(getDailyContent(section)) || videoRefs.length ||
+            const content = getDailyContent(section);
+            const deep = Boolean(content) ||
               getSectionQuestions(section.id).length > 0;
             const progress = sectionProgress(section);
             const questionCount = getSectionQuestions(section.id).length;
@@ -1282,8 +1258,8 @@
                 </span>
                 <span class="daily-section-meta">
                   <span class="status-pill ${statusClass(section)}">${statusLabel(section)}</span>
-                  ${videoRefs.length
-                    ? '<span class="content-depth deep">视频+教材</span>'
+                  ${content?.integrated
+                    ? '<span class="content-depth deep">视频与教材整合</span>'
                     : deep
                       ? '<span class="content-depth deep">教材深挖</span>'
                       : '<span class="content-depth">教材提炼</span>'}
@@ -1351,18 +1327,16 @@
     state.lastSection = section.id;
     saveState();
     const content = getDailyContent(section) || renderFallbackDailyContent(section);
-    const videoRefs = getSectionVideoRefs(section.id);
-    const sectionTeacherNotes = getTeacherNotes(section.id);
-    const sourceLabel = getDailyContent(section)
-      ? "视频+教材深度整理"
-      : sectionTeacherNotes.length
-        ? "逐集口述校正 + 教材深挖"
-      : videoRefs.length
-        ? "视频主题+教材深挖"
-        : chapter.id === "ch6"
-          ? "教材深挖（无对应视频）"
-          : "教材提炼版";
-    const questions = (content.questionIds || [])
+    const sourceLabel = content.integrated
+      ? "视频与教材整合"
+      : chapter.id === "ch6"
+        ? "教材深挖（无对应视频）"
+        : "教材整理";
+    const questionIds = [...new Set([
+      ...(content.questionIds || []),
+      ...getSectionQuestions(section.id).map((question) => question.id)
+    ])];
+    const questions = questionIds
       .map((id) => questionById.get(id))
       .filter(Boolean);
     const note = state.notes[section.id] || "";
@@ -1401,21 +1375,6 @@
             </a>
           </div>
         </header>
-
-        ${sectionTeacherNotes.length ? `
-          <div class="transcript-quality-note">
-            <strong>本地全量转写</strong>
-            <span>课堂原话按时间点摘录，已进行术语与同音错词校正；关键公式以 PPT/教材公式卡复核。</span>
-          </div>` : ""}
-
-        <section class="daily-video-reference">
-          <div>
-            <span class="eyebrow">VIDEO SOURCE</span>
-            <h2>课堂回看</h2>
-            <p>视频位置与教材小节对应，遇到公式时回到原始讲解核对。</p>
-          </div>
-          <div class="video-reference-list">${renderVideoRefs(section.id)}</div>
-        </section>
 
         <div class="daily-learning-stages">
           <section class="daily-stage">
@@ -1470,75 +1429,6 @@
           ${next ? `<a href="${sectionHref(chapter.id, next.id)}"><small>下一节</small><strong>${escapeHtml(next.no)} ${escapeHtml(next.title)}</strong></a>` : "<span></span>"}
         </nav>
       </article>`;
-  }
-
-  function videoCourseGroup(episode) {
-    const match = String(episode.title).trim().match(/^(\d+)(?:\.|\s|$)/);
-    return match ? Number(match[1]) : 99;
-  }
-
-  function renderVideoIndex() {
-    renderBreadcrumb({ view: "videos" });
-    const groupNames = {
-      1: "信号描述与基本运算",
-      2: "连续系统时域分析",
-      3: "连续系统频域分析",
-      4: "连续系统复频域分析",
-      5: "离散系统时域分析",
-      6: "Z 变换与离散复频域",
-      7: "系统模拟（旧课）",
-      8: "状态变量分析（旧课）"
-    };
-    const groups = [...new Set(videoEpisodes.map(videoCourseGroup))].sort((a, b) => a - b);
-    const totalSeconds = videoEpisodes.reduce((sum, episode) => sum + episode.duration, 0);
-    $("#appView").innerHTML = `
-      <section class="video-index-hero">
-        <span class="eyebrow">COURSE EPISODE INDEX · 50 EPISODES</span>
-        <h1>从视频回到教材，<br><em>每一集都有学习落点。</em></h1>
-        <p>统一索引 50 集课堂视频，标注时长、旧课属性和对应教材小节。题目数量与视频编号直接关联，方便按课堂顺序复习。</p>
-        <div class="question-bank-stats">
-          <div><strong>${videoEpisodes.length}</strong><span>视频集数</span></div>
-          <div><strong>${Math.floor(totalSeconds / 3600)}<small>h</small>${Math.round((totalSeconds % 3600) / 60)}<small>m</small></strong><span>总时长</span></div>
-          <div><strong>${videoEpisodes.filter((episode) => episode.sectionIds?.length).length}</strong><span>已映射集数</span></div>
-        </div>
-      </section>
-      <div class="video-course-groups">
-        ${groups.map((group) => {
-          const episodes = videoEpisodes.filter((episode) => videoCourseGroup(episode) === group);
-          return `<section class="video-course-group">
-            <div class="daily-group-heading">
-              <span>${String(group).padStart(2, "0")}</span>
-              <h3>${escapeHtml(groupNames[group] || "课程视频")}</h3>
-            </div>
-            <div class="video-course-grid">
-              ${episodes.map((episode) => {
-                const relatedQuestions = questionBank.filter((question) =>
-                  question.episodeIds.includes(episode.episode));
-                const sections = (episode.sectionIds || [])
-                  .map((id) => sectionById.get(id))
-                  .filter(Boolean);
-                return `<article class="video-course-card ${episode.legacy ? "legacy" : ""}">
-                  <div class="video-course-top">
-                    <span class="video-episode-no">第 ${episode.episode} 集</span>
-                    ${episode.legacy ? '<span class="video-legacy">旧课</span>' : ""}
-                    <span class="video-duration">${formatDuration(episode.duration)}</span>
-                  </div>
-                  <h4>${escapeHtml(episode.title)}</h4>
-                  <div class="video-course-meta">
-                    <span>${relatedQuestions.length} 道关联题</span>
-                    <a href="${episode.url}" target="_blank" rel="noreferrer">Bilibili 回看 ↗</a>
-                  </div>
-                  <div class="video-course-sections">
-                    ${sections.slice(0, 4).map((section) =>
-                      `<a href="${sectionHref(section.chapter.id, section.id)}">${escapeHtml(section.no)} ${escapeHtml(section.title)}</a>`
-                    ).join("")}
-                  </div>
-                </article>`;
-              }).join("")}
-            </div>
-          </section>`;
-        }).join("")}
-      </div>`;
   }
 
   function renderQuestionBank(focusId) {
@@ -2320,6 +2210,7 @@
     const modal = document.getElementById(id);
     if (!modal) return;
     modal.hidden = true;
+    if (id === "imageViewerModal") resetImageViewer();
     if (!$$(".modal-layer:not([hidden])").length) {
       document.body.classList.remove("modal-open");
     }
@@ -2351,16 +2242,7 @@
           .map((question) => `${question.title} ${stripHtml(question.prompt)} ${stripHtml(question.answer)}`)
           .join(" ")
           .toLowerCase();
-        const teacherText = getTeacherNotes(section.id)
-          .map((note) => [
-            note.summary,
-            ...(note.points || []),
-            note.pitfall,
-            note.takeaway
-          ].join(" "))
-          .join(" ")
-          .toLowerCase();
-        const haystack = `${no} ${title} ${summary} ${points} ${formulas} ${keywords} ${enhancedText} ${questionText} ${teacherText}`;
+        const haystack = `${no} ${title} ${summary} ${points} ${formulas} ${keywords} ${enhancedText} ${questionText}`;
         if (!terms.every((term) => haystack.includes(term))) return null;
         let score = 0;
         terms.forEach((term) => {
@@ -2530,8 +2412,148 @@
     if (button) button.setAttribute("aria-expanded", "false");
   }
 
+  function clampNumber(value, minimum, maximum) {
+    return Math.min(maximum, Math.max(minimum, value));
+  }
+
+  function applyImageViewerTransform() {
+    const image = $("#imageViewerImage");
+    const zoom = $("#imageViewerZoom");
+    if (image) {
+      image.style.transform =
+        `translate3d(${imageViewerState.x}px, ${imageViewerState.y}px, 0) scale(${imageViewerState.scale})`;
+    }
+    if (zoom) zoom.textContent = `${Math.round(imageViewerState.scale * 100)}%`;
+  }
+
+  function resetImageViewer() {
+    imageViewerState.scale = 1;
+    imageViewerState.x = 0;
+    imageViewerState.y = 0;
+    imageViewerState.dragging = false;
+    imageViewerState.pointerId = null;
+    imageViewerState.pointers.clear();
+    imageViewerState.pinchDistance = 0;
+    imageViewerState.pinchScale = 1;
+    applyImageViewerTransform();
+  }
+
+  function setImageViewerScale(nextScale, clientX, clientY) {
+    const stage = $("#imageViewerStage");
+    if (!stage) return;
+    const scale = clampNumber(nextScale, 0.5, 8);
+    if (Math.abs(scale - imageViewerState.scale) < 0.001) return;
+    if (typeof clientX === "number" && typeof clientY === "number") {
+      const rect = stage.getBoundingClientRect();
+      const offsetX = clientX - rect.left - rect.width / 2;
+      const offsetY = clientY - rect.top - rect.height / 2;
+      const ratio = scale / imageViewerState.scale;
+      imageViewerState.x = offsetX - (offsetX - imageViewerState.x) * ratio;
+      imageViewerState.y = offsetY - (offsetY - imageViewerState.y) * ratio;
+    }
+    imageViewerState.scale = scale;
+    if (scale <= 1) {
+      imageViewerState.x = 0;
+      imageViewerState.y = 0;
+    }
+    applyImageViewerTransform();
+  }
+
+  function openImageViewer(card) {
+    const modal = $("#imageViewerModal");
+    const image = $("#imageViewerImage");
+    const title = $("#imageViewerTitle");
+    const meta = $("#imageViewerMeta");
+    if (!modal || !image || !card) return;
+    const label = card.dataset.imageLabel || "课堂画面";
+    image.src = card.dataset.imageSrc || "";
+    image.alt = `${label}课堂板书截图`;
+    title.textContent = card.dataset.imageTitle || "课堂画面";
+    meta.textContent = `${label} · 点击放大后可用滚轮、双指或按钮缩放`;
+    resetImageViewer();
+    modal.hidden = false;
+    document.body.classList.add("modal-open");
+    setTimeout(() => $("#imageViewerStage")?.focus(), 40);
+  }
+
+  function handleImageViewerPointerDown(event) {
+    const stage = event.currentTarget;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    stage.setPointerCapture?.(event.pointerId);
+    imageViewerState.pointers.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY
+    });
+    if (imageViewerState.pointers.size === 1) {
+      imageViewerState.dragging = true;
+      imageViewerState.pointerId = event.pointerId;
+      imageViewerState.pointerX = event.clientX;
+      imageViewerState.pointerY = event.clientY;
+    } else if (imageViewerState.pointers.size === 2) {
+      const [first, second] = [...imageViewerState.pointers.values()];
+      imageViewerState.pinchDistance = Math.hypot(second.x - first.x, second.y - first.y);
+      imageViewerState.pinchScale = imageViewerState.scale;
+      imageViewerState.dragging = false;
+    }
+  }
+
+  function handleImageViewerPointerMove(event) {
+    if (!imageViewerState.pointers.has(event.pointerId)) return;
+    imageViewerState.pointers.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY
+    });
+    if (imageViewerState.pointers.size >= 2) {
+      const [first, second] = [...imageViewerState.pointers.values()];
+      const distance = Math.hypot(second.x - first.x, second.y - first.y);
+      if (imageViewerState.pinchDistance > 0) {
+        setImageViewerScale(
+          imageViewerState.pinchScale * distance / imageViewerState.pinchDistance,
+          (first.x + second.x) / 2,
+          (first.y + second.y) / 2
+        );
+      }
+      return;
+    }
+    if (!imageViewerState.dragging) return;
+    imageViewerState.x += event.clientX - imageViewerState.pointerX;
+    imageViewerState.y += event.clientY - imageViewerState.pointerY;
+    imageViewerState.pointerX = event.clientX;
+    imageViewerState.pointerY = event.clientY;
+    applyImageViewerTransform();
+  }
+
+  function handleImageViewerPointerUp(event) {
+    imageViewerState.pointers.delete(event.pointerId);
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    if (imageViewerState.pointers.size === 1) {
+      const [remaining] = [...imageViewerState.pointers.values()];
+      imageViewerState.dragging = true;
+      imageViewerState.pointerId = [...imageViewerState.pointers.keys()][0];
+      imageViewerState.pointerX = remaining.x;
+      imageViewerState.pointerY = remaining.y;
+    } else {
+      imageViewerState.dragging = false;
+      imageViewerState.pointerId = null;
+      imageViewerState.pinchDistance = 0;
+    }
+  }
+
   function handleDocumentClick(event) {
     const target = event.target;
+    const imageCard = target.closest("[data-image-src]");
+    if (imageCard) {
+      openImageViewer(imageCard);
+      return;
+    }
+    const imageAction = target.closest("[data-image-action]");
+    if (imageAction) {
+      const action = imageAction.dataset.imageAction;
+      if (action === "zoom-in") setImageViewerScale(imageViewerState.scale + 0.25);
+      if (action === "zoom-out") setImageViewerScale(imageViewerState.scale - 0.25);
+      if (action === "reset") resetImageViewer();
+      return;
+    }
     const actionElement = target.closest("[data-action]");
     if (actionElement) {
       const action = actionElement.dataset.action;
@@ -2646,6 +2668,21 @@
     });
     $("#sidebarScrim").addEventListener("click", closeMobileNav);
     $("#themeButton").addEventListener("click", toggleTheme);
+    const imageViewerStage = $("#imageViewerStage");
+    imageViewerStage.addEventListener("pointerdown", handleImageViewerPointerDown);
+    imageViewerStage.addEventListener("pointermove", handleImageViewerPointerMove);
+    imageViewerStage.addEventListener("pointerup", handleImageViewerPointerUp);
+    imageViewerStage.addEventListener("pointercancel", handleImageViewerPointerUp);
+    imageViewerStage.addEventListener("dblclick", resetImageViewer);
+    imageViewerStage.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      const direction = event.deltaY < 0 ? 1 : -1;
+      setImageViewerScale(
+        imageViewerState.scale + direction * 0.2,
+        event.clientX,
+        event.clientY
+      );
+    }, { passive: false });
     $$("[data-open-settings]").forEach((button) => {
       button.addEventListener("click", openSettings);
     });
@@ -2730,6 +2767,19 @@
           document.body.classList.remove("mindmap-open");
         }
         closeMobileNav();
+      }
+      if (!$("#imageViewerModal").hidden) {
+        if (event.key === "+" || event.key === "=") {
+          event.preventDefault();
+          setImageViewerScale(imageViewerState.scale + 0.25);
+          return;
+        }
+        if (event.key === "-" || event.key === "0") {
+          event.preventDefault();
+          if (event.key === "0") resetImageViewer();
+          else setImageViewerScale(imageViewerState.scale - 0.25);
+          return;
+        }
       }
       const tag = (event.target.tagName || "").toLowerCase();
       const inField = tag === "input" || tag === "textarea" || event.target.isContentEditable;

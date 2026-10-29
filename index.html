@@ -7,7 +7,7 @@
   <meta name="description" content="《信号与系统》修订版 · 分章分节学习台">
   <title>信号与系统 · 学习台</title>
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="assets/styles.css?v=20261024a">
+  <link rel="stylesheet" href="assets/styles.css?v=20261029c">
   <script>
     (function () {
       try {
@@ -156,11 +156,6 @@
       <nav class="chapter-nav" id="chapterNav"></nav>
 
       <div class="sidebar-foot">
-        <a class="side-action" href="#/videos" data-nav-videos>
-          <svg><use href="#icon-clock"></use></svg>
-          <span>视频课程索引</span>
-          <span class="side-count" data-video-count>50</span>
-        </a>
         <a class="side-action" href="#/questions" data-nav-questions>
           <svg><use href="#icon-note"></use></svg>
           <span>分类题目与解析</span>
@@ -179,7 +174,7 @@
           <svg><use href="#icon-pdf"></use></svg>
           <span>打开原版教材</span>
         </a>
-        <p>依据《信号与系统（修订版）》目录与知识体系整理</p>
+        <p>依据《信号与系统（修订版）》与 50 集课堂讲解整合</p>
       </div>
     </aside>
 
@@ -324,22 +319,50 @@
     </section>
   </div>
 
+  <div class="modal-layer image-viewer-layer" id="imageViewerModal" role="dialog" aria-modal="true"
+    aria-labelledby="imageViewerTitle" hidden>
+    <div class="modal-backdrop" data-close-modal></div>
+    <section class="image-viewer-panel">
+      <header class="image-viewer-heading">
+        <div>
+          <span class="eyebrow">CLASSROOM BOARD</span>
+          <h2 id="imageViewerTitle">课堂画面</h2>
+          <p id="imageViewerMeta"></p>
+        </div>
+        <button class="icon-button image-viewer-close" type="button" data-close-modal aria-label="关闭图片查看器">
+          <svg><use href="#icon-close"></use></svg>
+        </button>
+      </header>
+      <div class="image-viewer-stage" id="imageViewerStage" tabindex="0"
+        aria-label="课堂图片查看区域，可滚轮缩放或拖动平移">
+        <img id="imageViewerImage" alt="" draggable="false">
+      </div>
+      <footer class="image-viewer-toolbar">
+        <div class="image-viewer-zoom-controls" role="group" aria-label="图片缩放">
+          <button type="button" data-image-action="zoom-out" aria-label="缩小图片">−</button>
+          <output id="imageViewerZoom" aria-live="polite">100%</output>
+          <button type="button" data-image-action="zoom-in" aria-label="放大图片">+</button>
+          <button type="button" data-image-action="reset">适应窗口</button>
+        </div>
+        <span class="image-viewer-hint">滚轮或双指缩放 · 拖动平移 · 双击复位</span>
+      </footer>
+    </section>
+  </div>
+
   <div class="toast-region" id="toastRegion" aria-live="polite"></div>
 
   <script src="assets/data/ch1.js"></script>
   <script src="assets/data/ch2.js"></script>
-  <script src="assets/data/ch3.js"></script>
+  <script src="assets/data/ch3.js?v=20261028a"></script>
   <script src="assets/data/ch4.js"></script>
   <script src="assets/data/ch5.js"></script>
   <script src="assets/data/ch6.js"></script>
   <script src="assets/data/ch7.js"></script>
   <script src="assets/data/ch8.js"></script>
-  <script src="assets/data/daily-ch1.js?v=20261023m"></script>
   <script src="assets/data/questions-ch1.js?v=20261023m"></script>
   <script src="assets/data/video-index.js?v=20261023m"></script>
-  <script src="assets/data/teacher-notes.js?v=20261023m"></script>
-  <script src="assets/data/teacher-notes-auto.js?v=20261023m"></script>
+  <script src="assets/data/integrated-content.js?v=20261029c"></script>
   <script src="assets/data/expanded-questions.js?v=20261023m"></script>
-  <script src="assets/app.js?v=20261024b"></script>
+  <script src="assets/app.js?v=20261029b"></script>
 </body>
 </html>
